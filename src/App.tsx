@@ -46,6 +46,8 @@ export default function App() {
   const [docDescription, setDocDescription] = useState("Dienstleistung");
   const [notice, setNotice] = useState("");
   const [liveData, setLiveData] = useState(false);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [customerSaving, setCustomerSaving] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
@@ -73,11 +75,12 @@ export default function App() {
       setNotice("Login aktiv, aber Demo-Unternehmen nicht gefunden oder nicht berechtigt.");
       return;
     }
-    const companyId = companyRows[0].id;
+    const currentCompanyId = companyRows[0].id;
+    setCompanyId(currentCompanyId);
     const [customerResult, invoiceResult, offerResult] = await Promise.all([
-      supabase.from("customers").select("id,customer_number,name,email,city").eq("company_id", companyId).order("customer_number"),
-      supabase.from("invoices").select("id,invoice_number,customer_name,issue_date,total_amount,status").eq("company_id", companyId).order("issue_date", { ascending: false }),
-      supabase.from("offers").select("id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", companyId).order("issue_date", { ascending: false })
+      supabase.from("customers").select("id,customer_number,name,email,city").eq("company_id", currentCompanyId).order("customer_number"),
+      supabase.from("invoices").select("id,invoice_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
+      supabase.from("offers").select("id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false })
     ]);
     if (customerResult.error || invoiceResult.error || offerResult.error) {
       setNotice("Daten konnten nicht vollständig geladen werden. Bitte RLS und Unternehmensmitgliedschaft prüfen.");
@@ -174,16 +177,64 @@ export default function App() {
         </section>
       </main>
 
-      {showCustomerForm && <Modal title="Neuen Kunden anlegen" onClose={() => setShowCustomerForm(false)}>
-        <form className="form-grid" onSubmit={e => {
+      {showCustomerForm && <Modal title="Neuen Kunden anlegen" onClose={() => { if (!customerSaving) setShowCustomerForm(false); }}>
+        <form className="form-grid" onSubmit={async e => {
           e.preventDefault();
-          const customer: Customer = { id: crypto.randomUUID(), customer_number: `DEMO-${String(customers.length + 1).padStart(3, "0")}`, name: newCustomerName, email: newCustomerEmail, city: "" };
-          setCustomers(old => [...old, customer]); setNewCustomerName(""); setNewCustomerEmail(""); setShowCustomerForm(false);
-          setNotice("Kunde wurde in der lokalen Demo angelegt. Persistentes Speichern ergänzen wir als nächsten Schritt.");
+          if (customerSaving) return;
+          if (!supabase || !companyId || !liveData) {
+            setNotice("Kunde wurde nicht gespeichert: Es besteht keine aktive Supabase-Verbindung zum Unternehmen. Bitte neu anmelden und erneut versuchen.");
+            return;
+          }
+          setCustomerSaving(true);
+          setNotice("");
+          try {
+            const { data: existingRows, error: numberError } = await supabase
+              .from("customers")
+              .select("customer_number")
+              .eq("company_id", companyId);
+            if (numberError) throw numberError;
+            const maxNumber = (existingRows ?? []).reduce((max, row) => {
+              const match = /^KD-(\d+)$/.exec(String(row.customer_number ?? ""));
+              return match ? Math.max(max, Number(match[1])) : max;
+            }, 1000);
+            const customerNumber = `KD-${String(maxNumber + 1).padStart(4, "0")}`;
+            const { data: savedCustomer, error: insertError } = await supabase
+              .from("customers")
+              .insert({
+                company_id: companyId,
+                customer_number: customerNumber,
+                customer_type: "business",
+                name: newCustomerName.trim(),
+                email: newCustomerEmail.trim() || null,
+                city: null,
+                country: "Deutschland"
+              })
+              .select("id,customer_number,name,email,city")
+              .single();
+            if (insertError) throw insertError;
+            const customer: Customer = {
+              id: savedCustomer.id,
+              customer_number: savedCustomer.customer_number,
+              name: savedCustomer.name,
+              email: savedCustomer.email ?? "",
+              city: savedCustomer.city ?? ""
+            };
+            setCustomers(old => [...old, customer].sort((a, b) => a.customer_number.localeCompare(b.customer_number, "de")));
+            setNewCustomerName("");
+            setNewCustomerEmail("");
+            setShowCustomerForm(false);
+            setNotice(`Kunde ${customer.customer_number} wurde in Supabase gespeichert.`);
+          } catch (error) {
+            console.error("Customer save failed:", error);
+            const message = error instanceof Error ? error.message : "Unbekannter Datenbankfehler";
+            setNotice(`Kunde konnte nicht gespeichert werden: ${message}`);
+          } finally {
+            setCustomerSaving(false);
+          }
         }}>
-          <label>Firmen- oder Kundenname<input required value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder="Musterfirma GmbH"/></label>
-          <label>E-Mail-Adresse<input type="email" value={newCustomerEmail} onChange={e => setNewCustomerEmail(e.target.value)} placeholder="kontakt@example.de"/></label>
-          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowCustomerForm(false)}>Abbrechen</button><button className="btn btn-gold" type="submit">Kunde anlegen</button></div>
+          <label>Firmen- oder Kundenname<input required value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder="Musterfirma GmbH" disabled={customerSaving}/></label>
+          <label>E-Mail-Adresse<input type="email" value={newCustomerEmail} onChange={e => setNewCustomerEmail(e.target.value)} placeholder="kontakt@example.de" disabled={customerSaving}/></label>
+          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowCustomerForm(false)} disabled={customerSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={customerSaving}>{customerSaving ? "Wird gespeichert …" : "Kunde anlegen"}</button></div>
         </form>
       </Modal>}
 
