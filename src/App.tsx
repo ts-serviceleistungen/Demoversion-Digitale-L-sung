@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, ArrowDownRight, ArrowUpRight, Bell, BriefcaseBusiness, Building2,
-  CalendarDays, Check, ChevronDown, CircleHelp, CreditCard, Download, FileCheck2,
+  Activity, ArrowUpRight, Bell, ChevronDown, CircleHelp, Download, FileCheck2,
   FilePlus2, FileText, Filter, LayoutDashboard, LogOut, Menu, MoreHorizontal,
   Plus, ReceiptText, RefreshCw, Search, Settings, ShieldCheck, Sparkles, Users,
   Wallet, X
@@ -28,7 +27,7 @@ const demoDocs: Doc[] = [
   { id: "d6", number: "AN-2026-003", customer: "AutoClean Service", date: "2026-10-08", amount: 890, status: "Offen", kind: "Angebot" }
 ];
 
-function App() {
+export default function App() {
   const [tab, setTab] = useState<Tab>("Dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
