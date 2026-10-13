@@ -48,6 +48,7 @@ export default function App() {
   const [liveData, setLiveData] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [customerSaving, setCustomerSaving] = useState(false);
+  const [documentSaving, setDocumentSaving] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
@@ -238,21 +239,56 @@ export default function App() {
         </form>
       </Modal>}
 
-      {showDocForm && <Modal title={`Neues ${showDocForm}`} onClose={() => setShowDocForm(null)}>
-        <form className="form-grid" onSubmit={e => {
+      {showDocForm && <Modal title={`Neues ${showDocForm}`} onClose={() => { if (!documentSaving) setShowDocForm(null); }}>
+        <form className="form-grid" onSubmit={async e => {
           e.preventDefault();
-          const customer = customers.find(c => c.id === docCustomer) ?? customers[0];
+          if (documentSaving) return;
+          const customer = customers.find(c => c.id === docCustomer);
+          if (!supabase || !companyId || !liveData || !customer) {
+            setNotice(`Speichern nicht möglich: Bitte melde dich erneut an und prüfe die Supabase-Verbindung sowie den ausgewählten Kunden.`);
+            return;
+          }
+          const kind = showDocForm;
+          const table = kind === "Rechnung" ? "invoices" : "offers";
+          const numberColumn = kind === "Rechnung" ? "invoice_number" : "offer_number";
+          const prefix = kind === "Rechnung" ? "RE" : "AN";
           const amount = Math.max(0, Number(docAmount) || 0);
-          const prefix = showDocForm === "Rechnung" ? "RE" : "AN";
-          const next = docs.filter(d => d.kind === showDocForm).length + 1;
-          setDocs(old => [{ id: crypto.randomUUID(), number: `${prefix}-DEMO-${String(next).padStart(3, "0")}`, customer: customer?.name ?? "Unbekannt", date: new Date().toISOString().slice(0,10), amount, status: "Entwurf", kind: showDocForm }, ...old]);
-          setShowDocForm(null); setNotice(`${showDocForm} wurde lokal als Demo-Entwurf angelegt. PDF und Speichern in Supabase folgen im nächsten Ausbauschritt.`);
+          const issueDate = new Date().toISOString().slice(0, 10);
+          setDocumentSaving(true);
+          setNotice("");
+          try {
+            const { data: existingRows, error: listError } = await supabase
+              .from(table)
+              .select(numberColumn)
+              .eq("company_id", companyId);
+            if (listError) throw listError;
+            const numberField = numberColumn as "invoice_number" | "offer_number";
+            const maxNumber = (existingRows ?? []).reduce((max, row) => {
+              const match = new RegExp(`^${prefix}-DEMO-(\\d+)$`).exec(String((row as Record<string, unknown>)[numberField] ?? ""));
+              return match ? Math.max(max, Number(match[1])) : max;
+            }, 0);
+            const documentNumber = `${prefix}-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
+            const payload = kind === "Rechnung"
+              ? { company_id: companyId, invoice_number: documentNumber, customer_name: customer.name, issue_date: issueDate, total_amount: amount, status: "Entwurf" }
+              : { company_id: companyId, offer_number: documentNumber, customer_name: customer.name, issue_date: issueDate, total_amount: amount, status: "Entwurf" };
+            const { error: insertError } = await supabase.from(table).insert(payload);
+            if (insertError) throw insertError;
+            setShowDocForm(null);
+            setNotice(`${kind} ${documentNumber} wurde dauerhaft in Supabase gespeichert. Die Leistungsbeschreibung wird in diesem Schritt noch nicht als Position gespeichert.`);
+            await loadLiveData();
+          } catch (error) {
+            console.error("Document save failed:", error);
+            const message = error instanceof Error ? error.message : "Unbekannter Datenbankfehler";
+            setNotice(`${kind} konnte nicht gespeichert werden: ${message}`);
+          } finally {
+            setDocumentSaving(false);
+          }
         }}>
-          <label>Kunde<select value={docCustomer} onChange={e => setDocCustomer(e.target.value)}>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-          <label>Leistungsbeschreibung<input required value={docDescription} onChange={e => setDocDescription(e.target.value)}/></label>
-          <label>Betrag in Euro<input type="number" min="0" step="0.01" required value={docAmount} onChange={e => setDocAmount(e.target.value)}/></label>
-          <p className="form-note">Demo-Entwurf. Noch keine rechtsverbindliche Rechnung; Steuerberechnung und PDF-Ausgabe werden später ergänzt.</p>
-          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowDocForm(null)}>Abbrechen</button><button className="btn btn-gold" type="submit">Entwurf erstellen</button></div>
+          <label>Kunde<select value={docCustomer} onChange={e => setDocCustomer(e.target.value)} disabled={documentSaving}>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label>Leistungsbeschreibung<input required value={docDescription} onChange={e => setDocDescription(e.target.value)} disabled={documentSaving}/></label>
+          <label>Betrag in Euro<input type="number" min="0" step="0.01" required value={docAmount} onChange={e => setDocAmount(e.target.value)} disabled={documentSaving}/></label>
+          <p className="form-note">Demo-Entwurf. Noch keine rechtsverbindliche Rechnung; Steuerberechnung, Positionenspeicherung und PDF-Ausgabe werden später ergänzt.</p>
+          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowDocForm(null)} disabled={documentSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={documentSaving}>{documentSaving ? "Wird gespeichert …" : "Entwurf speichern"}</button></div>
         </form>
       </Modal>}
     </div>
