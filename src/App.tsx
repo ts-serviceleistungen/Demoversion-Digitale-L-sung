@@ -268,11 +268,24 @@ export default function App() {
               return match ? Math.max(max, Number(match[1])) : max;
             }, 0);
             const documentNumber = `${prefix}-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
-            const payload = kind === "Rechnung"
-              ? { company_id: companyId, invoice_number: documentNumber, customer_name: customer.name, issue_date: issueDate, total_amount: amount, status: "Entwurf" }
-              : { company_id: companyId, offer_number: documentNumber, customer_name: customer.name, issue_date: issueDate, total_amount: amount, status: "Entwurf" };
-            const { error: insertError } = await supabase.from(table).insert(payload);
-            if (insertError) throw insertError;
+            const insertResult = kind === "Rechnung"
+              ? await supabase.from("invoices").insert({
+                  company_id: companyId,
+                  invoice_number: documentNumber,
+                  customer_name: customer.name,
+                  issue_date: issueDate,
+                  total_amount: amount,
+                  status: "Entwurf"
+                })
+              : await supabase.from("offers").insert({
+                  company_id: companyId,
+                  offer_number: documentNumber,
+                  customer_name: customer.name,
+                  issue_date: issueDate,
+                  total_amount: amount,
+                  status: "Entwurf"
+                });
+            if (insertResult.error) throw insertResult.error;
             setShowDocForm(null);
             setNotice(`${kind} ${documentNumber} wurde dauerhaft in Supabase gespeichert. Die Leistungsbeschreibung wird in diesem Schritt noch nicht als Position gespeichert.`);
             await loadLiveData();
