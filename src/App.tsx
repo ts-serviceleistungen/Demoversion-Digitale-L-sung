@@ -80,16 +80,16 @@ export default function App() {
     setCompanyId(currentCompanyId);
     const [customerResult, invoiceResult, offerResult] = await Promise.all([
       supabase.from("customers").select("id,customer_number,name,email,city").eq("company_id", currentCompanyId).order("customer_number"),
-      supabase.from("invoices").select("id,invoice_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
-      supabase.from("offers").select("id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false })
+      supabase.from("invoices").select("id,invoice_number,customer_name,invoice_date,gross_amount,description").order("invoice_date", { ascending: false }),
+      supabase.from("offers").select("id,angebotsnummer,kundenname,angebotsdatum,betrag,status").order("angebotsdatum", { ascending: false })
     ]);
     if (customerResult.error || invoiceResult.error || offerResult.error) {
       setNotice("Daten konnten nicht vollständig geladen werden. Bitte RLS und Unternehmensmitgliedschaft prüfen.");
       return;
     }
     setCustomers((customerResult.data ?? []).map((c) => ({ id: c.id, customer_number: c.customer_number, name: c.name, email: c.email ?? "", city: c.city ?? "" })));
-    const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: d.status, kind: "Rechnung" }));
-    const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: d.status, kind: "Angebot" }));
+    const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, date: d.invoice_date, amount: Number(d.gross_amount), status: "Entwurf", kind: "Rechnung" }));
+    const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.angebotsnummer, customer: d.kundenname, date: d.angebotsdatum, amount: Number(d.betrag), status: d.status ?? "Entwurf", kind: "Angebot" }));
     setDocs([...invoiceDocs, ...offerDocs]);
     setLiveData(true);
   }
@@ -249,45 +249,52 @@ export default function App() {
             return;
           }
           const kind = showDocForm;
-          const table = kind === "Rechnung" ? "invoices" : "offers";
-          const numberColumn = kind === "Rechnung" ? "invoice_number" : "offer_number";
-          const prefix = kind === "Rechnung" ? "RE" : "AN";
           const amount = Math.max(0, Number(docAmount) || 0);
           const issueDate = new Date().toISOString().slice(0, 10);
           setDocumentSaving(true);
           setNotice("");
           try {
-            const { data: existingRows, error: listError } = await supabase
-              .from(table)
-              .select(numberColumn)
-              .eq("company_id", companyId);
-            if (listError) throw listError;
-            const numberField = numberColumn as "invoice_number" | "offer_number";
-            const maxNumber = (existingRows ?? []).reduce((max, row) => {
-              const match = new RegExp(`^${prefix}-DEMO-(\\d+)$`).exec(String((row as Record<string, unknown>)[numberField] ?? ""));
-              return match ? Math.max(max, Number(match[1])) : max;
-            }, 0);
-            const documentNumber = `${prefix}-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
-            const insertResult = kind === "Rechnung"
-              ? await supabase.from("invoices").insert({
-                  company_id: companyId,
-                  invoice_number: documentNumber,
-                  customer_name: customer.name,
-                  issue_date: issueDate,
-                  total_amount: amount,
-                  status: "Entwurf"
-                })
-              : await supabase.from("offers").insert({
-                  company_id: companyId,
-                  offer_number: documentNumber,
-                  customer_name: customer.name,
-                  issue_date: issueDate,
-                  total_amount: amount,
-                  status: "Entwurf"
-                });
-            if (insertResult.error) throw insertResult.error;
+            let documentNumber = "";
+            if (kind === "Rechnung") {
+              const { data: existingRows, error: listError } = await supabase
+                .from("invoices").select("invoice_number");
+              if (listError) throw listError;
+              const maxNumber = (existingRows ?? []).reduce((max, row) => {
+                const match = /^RE-DEMO-(\d+)$/.exec(String(row.invoice_number ?? ""));
+                return match ? Math.max(max, Number(match[1])) : max;
+              }, 0);
+              documentNumber = `RE-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
+              const { error } = await supabase.from("invoices").insert({
+                invoice_number: documentNumber,
+                customer_name: customer.name,
+                invoice_date: issueDate,
+                description: docDescription.trim(),
+                gross_amount: amount
+              });
+              if (error) throw error;
+            } else {
+              const { data: existingRows, error: listError } = await supabase
+                .from("offers").select("angebotsnummer");
+              if (listError) throw listError;
+              const maxNumber = (existingRows ?? []).reduce((max, row) => {
+                const match = /^AN-DEMO-(\d+)$/.exec(String(row.angebotsnummer ?? ""));
+                return match ? Math.max(max, Number(match[1])) : max;
+              }, 0);
+              documentNumber = `AN-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
+              const { error } = await supabase.from("offers").insert({
+                customer_id: customer.id,
+                angebotsnummer: documentNumber,
+                angebotsdatum: issueDate,
+                firma: "T.S. Serviceleistungen: Digitale Lösungen",
+                kundenname: customer.name,
+                beschreibung: docDescription.trim(),
+                betrag: amount,
+                status: "Entwurf"
+              });
+              if (error) throw error;
+            }
             setShowDocForm(null);
-            setNotice(`${kind} ${documentNumber} wurde dauerhaft in Supabase gespeichert. Die Leistungsbeschreibung wird in diesem Schritt noch nicht als Position gespeichert.`);
+            setNotice(`${kind} ${documentNumber} wurde in Supabase gespeichert.`);
             await loadLiveData();
           } catch (error) {
             console.error("Document save failed:", error);
