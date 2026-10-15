@@ -473,6 +473,8 @@ function DocumentPreview({ doc, companyId, onClose, onDelete, deleting }: { doc:
   const [terms, setTerms] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailNotice, setEmailNotice] = useState("");
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -524,7 +526,20 @@ function DocumentPreview({ doc, companyId, onClose, onDelete, deleting }: { doc:
       {doc.kind === "Angebot" && <div className="document-terms"><strong>Hinweise und Angebotsbedingungen</strong><p>{terms || "Bitte prüfen Sie die aufgeführten Leistungen und Mengen. Bei Rückfragen sprechen Sie uns gerne an."}</p></div>}
       <footer className="customer-document-footer">{[business?.tax_number && `Steuernummer: ${business.tax_number}`, business?.vat_id && `USt-IdNr.: ${business.vat_id}`, business?.iban && `IBAN: ${business.iban}`, business?.bic && `BIC: ${business.bic}`].filter(Boolean).join(" · ") || "T.S. Serviceleistungen · Digitale Lösungen"}</footer>
     </article>
-    <div className="modal-actions no-print"><button type="button" className="btn btn-light" onClick={onClose}>Schließen</button><button type="button" className="btn btn-light" disabled={deleting} onClick={onDelete}><Trash2 size={16}/>{deleting ? "Wird gelöscht …" : "Dokument löschen"}</button><button type="button" className="btn btn-gold" onClick={() => window.print()}><Download size={16}/> PDF / Drucken</button></div>
+    {emailNotice && <p className={emailNotice.startsWith("E-Mail versendet") ? "form-note" : "error-message"}>{emailNotice}</p>}
+    <div className="modal-actions no-print"><button type="button" className="btn btn-light" onClick={onClose}>Schließen</button><button type="button" className="btn btn-light" disabled={deleting} onClick={onDelete}><Trash2 size={16}/>{deleting ? "Wird gelöscht …" : "Dokument löschen"}</button><button type="button" className="btn btn-light" disabled={emailSending || loading || !customer?.email} title={!customer?.email ? "Beim Kunden muss eine E-Mail-Adresse hinterlegt sein" : "Dokument per E-Mail senden"} onClick={async () => {
+      if (!supabase || !companyId || !customer?.email) return;
+      setEmailSending(true); setEmailNotice("");
+      try {
+        const { data, error } = await supabase.functions.invoke("send-document-email", { body: { document_id: doc.id, document_kind: doc.kind, recipient_email: customer.email } });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        setEmailNotice(`E-Mail versendet an ${customer.email}.`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unbekannter Fehler";
+        setEmailNotice(`E-Mail konnte nicht versendet werden: ${message}. Prüfe die E-Mail-Funktion und deren Versandkonfiguration.`);
+      } finally { setEmailSending(false); }
+    }}><FileText size={16}/>{emailSending ? "Wird gesendet …" : "Per E-Mail senden"}</button><button type="button" className="btn btn-gold" onClick={() => window.print()}><Download size={16}/> PDF / Drucken</button></div>
   </div>;
 }
 
