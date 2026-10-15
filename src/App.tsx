@@ -13,7 +13,7 @@ type Doc = { id: string; number: string; customer: string; date: string; amount:
 
 const money = (n: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 const dateFmt = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString("de-DE");
-const statusLabel = (status: string, kind: "Angebot" | "Rechnung") => {
+const statusLabel = (status: string) => {
   const labels: Record<string, string> = { draft: "Entwurf", open: "Offen", accepted: "Angenommen", rejected: "Abgelehnt", expired: "Abgelaufen", converted: "Umgewandelt", cancelled: "Storniert", partially_paid: "Teilweise bezahlt", paid: "Bezahlt", overdue: "Überfällig" };
   return labels[status] ?? (status || "Entwurf");
 };
@@ -93,8 +93,8 @@ export default function App() {
     }
     setCustomers((customerResult.data ?? []).map((c) => ({ id: c.id, customer_number: c.customer_number, name: c.name, email: c.email ?? "", city: c.city ?? "" })));
     if (customerResult.data?.length && !customerResult.data.some((c) => c.id === docCustomer)) setDocCustomer(customerResult.data[0].id);
-    const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status, "Rechnung"), kind: "Rechnung" }));
-    const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status, "Angebot"), kind: "Angebot" }));
+    const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Rechnung" }));
+    const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Angebot" }));
     setDocs([...invoiceDocs, ...offerDocs]);
     setLiveData(true);
   }
@@ -288,7 +288,7 @@ export default function App() {
                 .from("offers").select("offer_number").eq("company_id", companyId);
               if (listError) throw listError;
               const maxNumber = (existingRows ?? []).reduce((max, row) => {
-                const match = /^AN-DEMO-(\d+)$/.exec(String(row.angebotsnummer ?? ""));
+                const match = /^AN-DEMO-(\d+)$/.exec(String(row.offer_number ?? ""));
                 return match ? Math.max(max, Number(match[1])) : max;
               }, 0);
               documentNumber = `AN-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
