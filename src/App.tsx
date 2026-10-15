@@ -9,7 +9,8 @@ import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Tab = "Dashboard" | "Kunden" | "Angebote" | "Rechnungen" | "Ausgaben" | "Einstellungen";
 type Customer = { id: string; name: string; email?: string; city?: string; customer_number: string };
-type Doc = { id: string; number: string; customer: string; date: string; amount: number; status: string; kind: "Angebot" | "Rechnung" };
+type Doc = { id: string; number: string; customer: string; customerId?: string; date: string; amount: number; status: string; kind: "Angebot" | "Rechnung" };
+type DraftItem = { description: string; quantity: string; unit: string; unit_price: string };
 
 const money = (n: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 const dateFmt = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString("de-DE");
@@ -47,7 +48,8 @@ export default function App() {
   const [showDocForm, setShowDocForm] = useState<"Angebot" | "Rechnung" | null>(null);
   const [docCustomer, setDocCustomer] = useState(demoCustomers[0].id);
   const [docAmount, setDocAmount] = useState("250");
-  const [docDescription, setDocDescription] = useState("Dienstleistung");
+  const [docDescription, setDocDescription] = useState("Vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen folgendes Angebot.");
+  const [docItems, setDocItems] = useState<DraftItem[]>([{ description: "Arbeitsleistung", quantity: "1", unit: "Stunde", unit_price: "250" }]);
   const [notice, setNotice] = useState("");
   const [liveData, setLiveData] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
@@ -95,8 +97,8 @@ export default function App() {
     }
     setCustomers((customerResult.data ?? []).map((c) => ({ id: c.id, customer_number: c.customer_number, name: c.name, email: c.email ?? "", city: c.city ?? "" })));
     if (customerResult.data?.length && !customerResult.data.some((c) => c.id === docCustomer)) setDocCustomer(customerResult.data[0].id);
-    const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Rechnung" }));
-    const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Angebot" }));
+    const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Rechnung" }));
+    const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Angebot" }));
     setDocs([...invoiceDocs, ...offerDocs]);
     setLiveData(true);
   }
@@ -295,7 +297,10 @@ export default function App() {
             return;
           }
           const kind = showDocForm;
-          const amount = Math.max(0, Number(docAmount) || 0);
+          const validItems = docItems.map(item => ({ description: item.description.trim(), quantity: Number(item.quantity), unit: item.unit.trim() || "Stück", unit_price: Number(item.unit_price) }))
+            .filter(item => item.description && item.quantity > 0 && item.unit_price >= 0);
+          if (!validItems.length) { setNotice("Bitte mindestens eine vollständige Leistungsposition mit Menge und Preis eintragen."); return; }
+          const amount = validItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
           const issueDate = new Date().toISOString().slice(0, 10);
           setDocumentSaving(true);
           setNotice("");
@@ -310,7 +315,7 @@ export default function App() {
                 return match ? Math.max(max, Number(match[1])) : max;
               }, 0);
               documentNumber = `RE-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
-              const { error } = await supabase.from("invoices").insert({
+              const { data: savedInvoice, error } = await supabase.from("invoices").insert({
                 company_id: companyId,
                 customer_id: customer.id,
                 invoice_number: documentNumber,
@@ -322,8 +327,15 @@ export default function App() {
                 subtotal: amount,
                 total_amount: amount,
                 created_by: (await supabase.auth.getUser()).data.user?.id ?? null
-              });
+              }).select("id").single();
               if (error) throw error;
+              const { error: itemError } = await supabase.from("invoice_items").insert(validItems.map((item, index) => ({
+                company_id: companyId, invoice_id: savedInvoice.id, position: index + 1,
+                description: item.description, quantity: item.quantity, unit: item.unit,
+                unit_price: item.unit_price, discount_percent: 0, tax_rate: 0,
+                line_total: item.quantity * item.unit_price
+              })));
+              if (itemError) throw itemError;
             } else {
               const { data: existingRows, error: listError } = await supabase
                 .from("offers").select("offer_number").eq("company_id", companyId);
@@ -333,20 +345,36 @@ export default function App() {
                 return match ? Math.max(max, Number(match[1])) : max;
               }, 0);
               documentNumber = `AN-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
-              const { error } = await supabase.from("offers").insert({
+              const validUntil = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+              const { data: savedOffer, error } = await supabase.from("offers").insert({
                 company_id: companyId,
                 customer_id: customer.id,
                 offer_number: documentNumber,
                 issue_date: issueDate,
+                valid_until: validUntil,
                 customer_name: customer.name,
+                customer_street: null,
+                customer_postal_code: null,
+                customer_city: customer.city || null,
+                customer_country: "Deutschland",
                 status: "draft",
                 currency: "EUR",
                 notes: docDescription.trim(),
+                terms: "Dieses Angebot ist 14 Tage gültig. Die Abrechnung erfolgt nach den aufgeführten Positionen.",
                 subtotal: amount,
+                discount_amount: 0,
+                tax_amount: 0,
                 total_amount: amount,
                 created_by: (await supabase.auth.getUser()).data.user?.id ?? null
-              });
+              }).select("id").single();
               if (error) throw error;
+              const { error: itemError } = await supabase.from("offer_items").insert(validItems.map((item, index) => ({
+                company_id: companyId, offer_id: savedOffer.id, position: index + 1,
+                description: item.description, quantity: item.quantity, unit: item.unit,
+                unit_price: item.unit_price, discount_percent: 0, tax_rate: 0,
+                line_total: item.quantity * item.unit_price
+              })));
+              if (itemError) throw itemError;
             }
             setShowDocForm(null);
             setNotice(`${kind} ${documentNumber} wurde in Supabase gespeichert.`);
@@ -360,9 +388,19 @@ export default function App() {
           }
         }}>
           <label>Kunde<select value={docCustomer} onChange={e => setDocCustomer(e.target.value)} disabled={documentSaving}>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-          <label>Leistungsbeschreibung<input required value={docDescription} onChange={e => setDocDescription(e.target.value)} disabled={documentSaving}/></label>
-          <label>Betrag in Euro<input type="number" min="0" step="0.01" required value={docAmount} onChange={e => setDocAmount(e.target.value)} disabled={documentSaving}/></label>
-          <p className="form-note">Demo-Entwurf. Noch keine rechtsverbindliche Rechnung; Steuerberechnung, Positionenspeicherung und PDF-Ausgabe werden später ergänzt.</p>
+          <label>Einleitung / Beschreibung<textarea required value={docDescription} onChange={e => setDocDescription(e.target.value)} disabled={documentSaving} rows={3}/></label>
+          <div className="line-items-editor">
+            <div className="line-items-heading"><strong>Leistungen und Artikel</strong><button type="button" className="text-btn" disabled={documentSaving} onClick={() => setDocItems(items => [...items, { description: "", quantity: "1", unit: "Stück", unit_price: "0" }])}><Plus size={15}/> Position hinzufügen</button></div>
+            {docItems.map((item, index) => <div className="line-item-edit" key={index}>
+              <label>Leistung / Artikel<input required value={item.description} disabled={documentSaving} onChange={e => setDocItems(items => items.map((row, i) => i === index ? {...row, description:e.target.value} : row))}/></label>
+              <label>Menge<input type="number" min="0.01" step="0.01" required value={item.quantity} disabled={documentSaving} onChange={e => setDocItems(items => items.map((row, i) => i === index ? {...row, quantity:e.target.value} : row))}/></label>
+              <label>Einheit<input required value={item.unit} disabled={documentSaving} onChange={e => setDocItems(items => items.map((row, i) => i === index ? {...row, unit:e.target.value} : row))}/></label>
+              <label>Einzelpreis (€)<input type="number" min="0" step="0.01" required value={item.unit_price} disabled={documentSaving} onChange={e => setDocItems(items => items.map((row, i) => i === index ? {...row, unit_price:e.target.value} : row))}/></label>
+              <div className="line-item-total"><span>Gesamt</span><strong>{money(Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.unit_price)||0))}</strong>{docItems.length > 1 && <button type="button" className="text-btn" aria-label="Position entfernen" disabled={documentSaving} onClick={() => setDocItems(items => items.filter((_,i)=>i!==index))}><Trash2 size={14}/> Entfernen</button>}</div>
+            </div>)}
+            <div className="line-items-sum"><span>Zwischensumme (Demo ohne Steuer)</span><strong>{money(docItems.reduce((sum,item)=>sum + Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.unit_price)||0),0))}</strong></div>
+          </div>
+          <p className="form-note">{kindLabel(showDocForm)} wird mit Positionen gespeichert. Steuersätze sind derzeit auf 0 % gesetzt; bitte die Demo-Dokumente nicht als rechtsverbindliche Buchhaltungsunterlagen verwenden.</p>
           <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowDocForm(null)} disabled={documentSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={documentSaving}>{documentSaving ? "Wird gespeichert …" : "Entwurf speichern"}</button></div>
         </form>
       </Modal>}
@@ -370,7 +408,7 @@ export default function App() {
   );
 }
 
-function Login({ email, setEmail, password, setPassword, onSubmit, error, configured }: {
+function kindLabel(kind: "Angebot" | "Rechnung") { return kind === "Angebot" ? "Das Angebot" : "Die Rechnung"; }\n\nfunction Login({ email, setEmail, password, setPassword, onSubmit, error, configured }: {
   email: string; setEmail: (v: string) => void; password: string; setPassword: (v: string) => void;
   onSubmit: (e: React.FormEvent) => void; error: string; configured: boolean;
 }) {
