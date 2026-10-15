@@ -276,7 +276,7 @@ export default function App() {
         </form>
       </Modal>}
 
-      {showDocForm && <Modal title={`Neues ${showDocForm}`} onClose={() => { if (!documentSaving) setShowDocForm(null); }}>
+      {showDocForm && <Modal title={`Neues ${showDocForm}`} className="modal-document" onClose={() => { if (!documentSaving) setShowDocForm(null); }}>
         <form className="form-grid" onSubmit={async e => {
           e.preventDefault();
           if (documentSaving) return;
@@ -551,6 +551,6 @@ function Expenses() {
 function SettingsPage({ configured, liveData }: { configured: boolean; liveData: boolean }) {
   return <div className="settings-grid"><div className="panel settings-panel"><h2>Unternehmensprofil</h2><p>Angaben für spätere Angebots- und Rechnungsvorlagen.</p><div className="setting-line"><span>Firmenname</span><strong>T.S. Serviceleistungen</strong></div><div className="setting-line"><span>Bereich</span><strong>Digitale Lösungen</strong></div><div className="setting-line"><span>Design</span><strong>Silber · Weiß · Gold</strong></div></div><div className="panel settings-panel"><h2>Systemstatus</h2><div className="setting-line"><span>Supabase-Variablen</span><strong className={configured?"text-green":"text-warn"}>{configured?"Konfiguriert":"Noch nicht gesetzt"}</strong></div><div className="setting-line"><span>Datenquelle</span><strong>{liveData?"Supabase":"Lokale Demo"}</strong></div><div className="setting-line"><span>PDF-Erstellung</span><strong>Geplant</strong></div><div className="setting-line"><span>Demo-Reset</span><strong>Nur lokale Vorschau</strong></div></div></div>;
 }
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  return <div className="modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="modal" role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose} aria-label="Schließen"><X size={18}/></button></div>{children}</section></div>;
+function Modal({ title, children, onClose, className = "" }: { title: string; children: React.ReactNode; onClose: () => void; className?: string }) {
+  return <div className="modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className={`modal ${className}`} role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose} aria-label="Schließen"><X size={18}/></button></div>{children}</section></div>;
 }
