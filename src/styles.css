@@ -56,3 +56,13 @@
   .document-preview-shell{display:block!important}
   .line-items-editor,.modal-actions{display:none!important}
 }
+
+
+/* Verbesserte Dokumentansicht: größere Fläche, lesbare Tabelle, kein abgeschnittener Inhalt */
+.modal-document{width:min(100%,1180px);max-height:calc(100dvh - 24px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;box-sizing:border-box;padding:28px}
+.modal-document .document-preview-shell,.modal-document .customer-document,.modal-document .document-items-table{width:100%;min-width:0;box-sizing:border-box}
+.modal-document .document-items-table{overflow-x:auto}
+.modal-document .customer-document{padding:clamp(18px,3vw,36px)}
+.modal-document .document-items-table table{min-width:620px}
+.modal-document .modal-actions{flex-wrap:wrap}
+@media(max-width:650px){.modal-document{width:100%;max-height:calc(100dvh - 12px);padding:14px}.modal-document .customer-document{padding:16px}.modal-document .document-items-table table{min-width:580px}}
