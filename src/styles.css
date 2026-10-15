@@ -325,3 +325,141 @@
   .modal-preview .customer-document > * { break-inside: avoid !important; }
   .modal-preview .document-items-table tr { break-inside: avoid !important; }
 }
+
+/* Mobile-first polish: Smartphone, Tablet und Touch-Bedienung */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { overflow-x: hidden; }
+button, .btn, input, select, textarea { touch-action: manipulation; }
+button, .btn { min-height: 40px; }
+input, select, textarea { max-width: 100%; }
+.table-wrap { max-width: 100%; -webkit-overflow-scrolling: touch; }
+@media (max-width: 900px) {
+  .sidebar { width: 228px; }
+  .topbar { padding: 0 20px; gap: 12px; }
+  .page { padding: 24px 20px 18px; }
+  .notice { margin-left: 20px; margin-right: 20px; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .content-grid { grid-template-columns: minmax(0, 1fr); }
+  .settings-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 680px) {
+  .app-shell { display: block; min-height: 100dvh; }
+  .sidebar {
+    position: fixed; z-index: 50; inset: 0 auto 0 0;
+    width: min(84vw, 310px); max-width: 310px; height: 100dvh;
+    overflow-y: auto; overscroll-behavior: contain;
+    padding: max(18px, env(safe-area-inset-top)) 13px max(16px, env(safe-area-inset-bottom));
+    box-shadow: 18px 0 50px #11182735;
+    transform: translateX(-105%); visibility: hidden;
+    transition: transform .22s ease, visibility .22s ease;
+  }
+  .sidebar.open { transform: translateX(0); visibility: visible; }
+  .sidebar.open:before {
+    content: ""; position: fixed; z-index: -1; inset: 0;
+    background: #11182755; pointer-events: none;
+  }
+  .brand { padding: 0 7px 24px; }
+  .brand strong { font-size: 13px; }
+  .mobile-only { display: inline-grid !important; }
+  .topbar {
+    position: sticky; top: 0; z-index: 15; height: auto; min-height: 62px;
+    padding: max(8px, env(safe-area-inset-top)) 13px 9px;
+    display: flex; gap: 8px; justify-content: flex-start;
+  }
+  .topbar > .mobile-only { flex: 0 0 40px; width: 40px; height: 40px; }
+  .breadcrumbs { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+  .breadcrumbs span { padding: 0 5px; }
+  .top-actions { gap: 4px; margin-left: auto; }
+  .top-actions .search { width: 40px; height: 40px; padding: 0 10px; transition: width .18s ease; overflow: hidden; }
+  .top-actions .search:focus-within { width: min(43vw, 190px); }
+  .top-actions .search input { min-width: 0; font-size: 14px; }
+  .top-actions > .icon-btn { width: 36px; height: 40px; }
+  .user-chip { padding-left: 7px; gap: 0; border-left: 0; }
+  .user-chip > div:not(.avatar), .user-chip > svg { display: none; }
+  .avatar { width: 34px; height: 34px; }
+  .page { padding: 20px 13px calc(22px + env(safe-area-inset-bottom)); }
+  .page-heading { display: grid; align-items: stretch; gap: 15px; margin-bottom: 18px; }
+  .page h1 { font-size: clamp(25px, 7vw, 31px); letter-spacing: -.8px; margin-top: 8px; }
+  .page-heading p { font-size: 12px; line-height: 1.55; }
+  .heading-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .heading-actions .btn { white-space: normal; min-height: 44px; padding: 10px 9px; font-size: 11px; }
+  .quick-actions { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .quick-actions > button { padding: 12px; min-height: 66px; }
+  .quick-icon { width: 40px; height: 40px; flex: 0 0 40px; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .metric-card { padding: 13px 12px; min-width: 0; }
+  .metric-top { align-items: flex-start; gap: 6px; font-size: 10px; }
+  .metric-icon { width: 30px; height: 30px; flex: 0 0 30px; }
+  .metric-value { font-size: clamp(17px, 4.8vw, 22px); letter-spacing: -.6px; overflow-wrap: anywhere; margin: 10px 0 8px; }
+  .metric-foot { font-size: 9px; line-height: 1.35; align-items: flex-start; }
+  .content-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .panel { padding: 14px 12px; border-radius: 12px; }
+  .panel-head { gap: 8px; margin-bottom: 13px; }
+  .panel-head h2 { font-size: 14px; }
+  .bar-chart { gap: 6px; padding-left: 0; padding-right: 0; }
+  .bars { gap: 3px; }
+  .bar { width: 10px; }
+  .bar-group small { font-size: 9px; }
+  .status-list { gap: 16px; }
+  .table-panel { padding: 14px 10px; }
+  .table-panel .panel-head { flex-wrap: wrap; }
+  .table-wrap { margin: 0 -2px; overflow-x: auto; }
+  .table-wrap table { min-width: 620px; }
+  td, th { padding: 11px 9px; }
+  .filter-strip { gap: 10px; flex-wrap: wrap; }
+  .customer-detail { overflow-wrap: anywhere; }
+  .settings-panel { padding: 17px 14px; }
+  .setting-line { align-items: flex-start; gap: 12px; }
+  .setting-line strong { overflow-wrap: anywhere; }
+  .notice { margin: 10px 12px 0; padding: 11px; line-height: 1.5; align-items: flex-start; }
+  .notice .icon-btn { flex: 0 0 32px; }
+  .page footer { line-height: 1.7; padding: 16px 2px 5px; }
+  .modal-backdrop { padding: 8px !important; align-items: start !important; }
+  .modal { width: 100%; max-width: 100%; padding: 17px; border-radius: 14px; margin: auto 0; }
+  .modal-document { width: 100%; max-height: calc(100dvh - 16px); padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+  .modal-document .modal-head h2 { font-size: 19px; }
+  .modal-document .line-items-editor { padding: 13px; gap: 12px; }
+  .modal-document .line-items-heading { align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+  .modal-document .line-items-heading strong { font-size: 17px; }
+  .modal-document .line-item-edit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 14px 0; }
+  .modal-document .line-item-edit label:first-child { grid-column: 1 / -1; }
+  .modal-document .line-item-edit label { min-width: 0; font-size: 12px; }
+  .modal-document .line-item-edit input,
+  .modal-document textarea,
+  .modal-document select { width: 100%; min-width: 0; min-height: 45px; font-size: 16px; padding: 11px; }
+  .modal-document textarea { min-height: 100px; }
+  .line-item-total { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .line-items-sum { gap: 8px; font-size: 12px; }
+  .form-grid { gap: 13px; }
+  .form-grid label { min-width: 0; font-size: 12px; }
+  .form-grid input, .form-grid select, .form-grid textarea { min-height: 44px; font-size: 16px; }
+  .modal-actions { position: sticky; bottom: calc(-16px - env(safe-area-inset-bottom)); background: #fff; padding: 12px 0 max(4px, env(safe-area-inset-bottom)); z-index: 5; display: flex; gap: 8px; }
+  .modal-actions .btn { flex: 1; white-space: normal; min-height: 44px; }
+  .modal-preview { max-height: calc(100dvh - 16px); overflow-y: auto; }
+  .modal-preview .customer-document { padding: 13px; gap: 15px; }
+  .modal-preview .document-address-meta { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .modal-preview .document-meta-grid { width: 100%; }
+  .modal-preview .document-items-table { max-width: 100%; overflow-x: auto; }
+  .modal-preview .document-items-table table { min-width: 560px; }
+  .modal-preview .document-totals { width: 100%; }
+  .login-shell { min-height: 100dvh; grid-template-columns: minmax(0, 1fr); padding: 14px; gap: 14px; }
+  .login-card { width: 100%; max-width: 480px; margin: 0 auto; padding: 24px 19px; }
+  .login-side { min-height: 230px; border-radius: 16px; padding: 24px; }
+  .side-content h2 { font-size: 27px; }
+  .side-pills { flex-wrap: wrap; }
+}
+@media (max-width: 380px) {
+  .breadcrumbs { font-size: 10px; }
+  .top-actions { gap: 1px; }
+  .top-actions .search:focus-within { width: 38vw; }
+  .heading-actions { grid-template-columns: minmax(0, 1fr); }
+  .metric-grid { gap: 7px; }
+  .metric-card { padding: 11px 9px; }
+  .metric-value { font-size: 17px; }
+  .modal-document .line-item-edit { grid-template-columns: minmax(0, 1fr); }
+  .modal-document .line-item-edit label:first-child,
+  .line-item-total { grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
