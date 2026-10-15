@@ -7,10 +7,11 @@ import {
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
-type Tab = "Dashboard" | "Kunden" | "Angebote" | "Rechnungen" | "Ausgaben" | "Einstellungen";
+type Tab = "Dashboard" | "Kunden" | "Angebote" | "Rechnungen" | "Berechnung" | "Ausgaben" | "Einstellungen";
 type Customer = { id: string; name: string; email?: string; city?: string; customer_number: string };
 type Doc = { id: string; number: string; customer: string; customerId?: string; date: string; amount: number; status: string; kind: "Angebot" | "Rechnung" };
 type DraftItem = { description: string; quantity: string; unit: string; unit_price: string };
+type Expense = { id: string; expense_date: string; description: string; category: string; amount: number; tax_amount: number; notes?: string };
 
 const money = (n: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 const dateFmt = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString("de-DE");
@@ -42,6 +43,15 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [customers, setCustomers] = useState<Customer[]>(demoCustomers);
   const [docs, setDocs] = useState<Doc[]>(demoDocs);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0,10));
+  const [expenseDescription, setExpenseDescription] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState("Betriebsausgabe");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseTax, setExpenseTax] = useState("0");
+  const [expenseNotes, setExpenseNotes] = useState("");
+  const [expenseSaving, setExpenseSaving] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
@@ -85,12 +95,13 @@ export default function App() {
     }
     const currentCompanyId = companyRows[0].id;
     setCompanyId(currentCompanyId);
-    const [customerResult, invoiceResult, offerResult] = await Promise.all([
+    const [customerResult, invoiceResult, offerResult, expenseResult] = await Promise.all([
       supabase.from("customers").select("id,customer_number,name,email,city").eq("company_id", currentCompanyId).order("customer_number"),
       supabase.from("invoices").select("id,company_id,customer_id,invoice_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
-      supabase.from("offers").select("id,company_id,customer_id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false })
+      supabase.from("offers").select("id,company_id,customer_id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
+      supabase.from("expenses").select("id,expense_date,description,category,amount,tax_amount,notes").eq("company_id", currentCompanyId).order("expense_date", { ascending: false })
     ]);
-    if (customerResult.error || invoiceResult.error || offerResult.error) {
+    if (customerResult.error || invoiceResult.error || offerResult.error || expenseResult.error) {
       setNotice("Daten konnten nicht vollständig geladen werden. Bitte RLS und Unternehmensmitgliedschaft prüfen.");
       return;
     }
@@ -99,6 +110,7 @@ export default function App() {
     const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Rechnung" }));
     const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Angebot" }));
     setDocs([...invoiceDocs, ...offerDocs]);
+    setExpenses((expenseResult.data ?? []).map((e) => ({ id:e.id, expense_date:e.expense_date, description:e.description, category:e.category ?? "Betriebsausgabe", amount:Number(e.amount), tax_amount:Number(e.tax_amount ?? 0), notes:e.notes ?? "" })));
     setLiveData(true);
   }
 
@@ -166,7 +178,7 @@ export default function App() {
         <nav>
           {([
             ["Dashboard", LayoutDashboard], ["Kunden", Users], ["Angebote", FileText],
-            ["Rechnungen", ReceiptText], ["Ausgaben", Wallet], ["Einstellungen", Settings]
+            ["Rechnungen", ReceiptText], ["Berechnung", Activity], ["Ausgaben", Wallet], ["Einstellungen", Settings]
           ] as const).map(([name, Icon]) => (
             <button key={name} className={`nav-item ${tab === name ? "active" : ""}`} onClick={() => { setTab(name); setMenuOpen(false); }}>
               <Icon size={18}/><span>{name}</span>
@@ -204,7 +216,8 @@ export default function App() {
           {tab === "Kunden" && <Customers customers={filteredCustomers} onAdd={() => setShowCustomerForm(true)} docs={docs} onOpenDoc={setSelectedDoc} onDeleteDoc={deleteDocument} />}
           {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
-          {tab === "Ausgaben" && <Expenses />}
+          {tab === "Berechnung" && <Calculation docs={invoices} expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} />}
+          {tab === "Ausgaben" && <Expenses expenses={expenses} onAdd={() => setShowExpenseForm(true)} />}
           {tab === "Einstellungen" && <SettingsPage configured={isSupabaseConfigured} liveData={liveData} />}
 
           <footer>© 2026 T.S. Serviceleistungen · Digitale Lösungen <span>•</span> Demo-Version – Musterwerte, keine produktive Buchhaltungssoftware</footer>
@@ -215,6 +228,31 @@ export default function App() {
         <DocumentPreview doc={selectedDoc} companyId={companyId} onClose={() => setSelectedDoc(null)} onDelete={() => void deleteDocument(selectedDoc)} deleting={documentDeleting} />
       </Modal>}
 
+      {showExpenseForm && <Modal title="Neue Ausgabe erfassen" onClose={() => { if (!expenseSaving) setShowExpenseForm(false); }}>
+        <form className="form-grid" onSubmit={async e => {
+          e.preventDefault();
+          if (!supabase || !companyId || !liveData) { setNotice("Ausgabe kann nur mit aktiver Supabase-Verbindung gespeichert werden."); return; }
+          const amount = Number(expenseAmount); const taxAmount = Number(expenseTax) || 0;
+          if (!expenseDescription.trim() || !Number.isFinite(amount) || amount < 0 || taxAmount < 0) return;
+          setExpenseSaving(true); setNotice("");
+          try {
+            const { error } = await supabase.from("expenses").insert({ company_id: companyId, expense_date: expenseDate, description: expenseDescription.trim(), category: expenseCategory, amount, tax_amount: taxAmount, notes: expenseNotes.trim() || null });
+            if (error) throw error;
+            setExpenseDescription(""); setExpenseAmount(""); setExpenseTax("0"); setExpenseNotes(""); setShowExpenseForm(false);
+            await loadLiveData(); setNotice("Ausgabe wurde gespeichert und in die Berechnung übernommen.");
+          } catch (err) { setNotice("Ausgabe konnte nicht gespeichert werden: " + (err instanceof Error ? err.message : "Datenbankfehler")); }
+          finally { setExpenseSaving(false); }
+        }}>
+          <label>Datum<input type="date" required value={expenseDate} onChange={e=>setExpenseDate(e.target.value)} /></label>
+          <label>Bezeichnung<input required value={expenseDescription} onChange={e=>setExpenseDescription(e.target.value)} placeholder="z. B. Materialeinkauf" /></label>
+          <label>Kategorie<select value={expenseCategory} onChange={e=>setExpenseCategory(e.target.value)}><option>Betriebsausgabe</option><option>Material</option><option>Fahrzeug</option><option>Werkzeug</option><option>Software / Telefon</option><option>Versicherung</option><option>Fahrtkosten</option><option>Sonstiges</option></select></label>
+          <label>Ausgabenbetrag (€)<input type="number" min="0" step="0.01" required value={expenseAmount} onChange={e=>setExpenseAmount(e.target.value)} placeholder="0,00" /></label>
+          <label>Enthaltene MwSt. (€)<input type="number" min="0" step="0.01" value={expenseTax} onChange={e=>setExpenseTax(e.target.value)} /></label>
+          <label>Notiz / Belegnummer<textarea rows={2} value={expenseNotes} onChange={e=>setExpenseNotes(e.target.value)} /></label>
+          <p className="form-note">Demo-Ausgabe. Der Betrag wird als eingegebener Ausgabenbetrag verbucht. Belege können später ergänzt werden.</p>
+          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={()=>setShowExpenseForm(false)} disabled={expenseSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={expenseSaving}>{expenseSaving?"Speichert …":"Ausgabe speichern"}</button></div>
+        </form>
+      </Modal>}
       {showCustomerForm && <Modal title="Neuen Kunden anlegen" onClose={() => { if (!customerSaving) setShowCustomerForm(false); }}>
         <form className="form-grid" onSubmit={async e => {
           e.preventDefault();
@@ -570,8 +608,23 @@ function Customers({ customers, onAdd, docs, onOpenDoc, onDeleteDoc }: { custome
 function Documents({ docs, kind, onNew, onOpen, onDelete }: { docs: Doc[]; kind: "Angebot"|"Rechnung"; onNew: () => void; onOpen: (doc: Doc) => void; onDelete: (doc: Doc) => void }) {
   return <section className="panel table-panel"><div className="panel-head"><div><h2>{kind} verwalten</h2><p>Dokumente, Status und Beträge</p></div><button className="btn btn-gold" onClick={onNew}><Plus size={16}/> {kind} erstellen</button></div><div className="filter-strip"><span><Filter size={15}/> Alle Dokumente</span><span>{docs.length} Einträge</span></div><DocumentTable docs={docs} onOpen={onOpen} onDelete={onDelete}/></section>;
 }
-function Expenses() {
-  return <div className="panel empty-panel"><div className="empty-icon"><Wallet size={24}/></div><h2>Ausgabenverwaltung</h2><p>Die Datenbank ist vorbereitet. Eingabeformular, Belegupload und Auswertungen werden im nächsten Ausbauschritt ergänzt.</p><span className="status-badge neutral">In Vorbereitung</span></div>;
+function Calculation({ docs, expenses, onAddExpense }: { docs: Doc[]; expenses: Expense[]; onAddExpense: () => void }) {
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const years = Array.from(new Set([String(new Date().getFullYear()), ...docs.map(d=>d.date.slice(0,4)), ...expenses.map(e=>e.expense_date.slice(0,4))])).sort((a,b)=>Number(b)-Number(a));
+  const yearDocs = docs.filter(d=>d.date.startsWith(year)); const yearExpenses = expenses.filter(e=>e.expense_date.startsWith(year));
+  const income = yearDocs.reduce((sum,d)=>sum+d.amount,0); const costs = yearExpenses.reduce((sum,e)=>sum+e.amount,0); const profit = income-costs;
+  const months = Array.from({length:12},(_,i)=>{const key=`${year}-${String(i+1).padStart(2,"0")}`;const mi=yearDocs.filter(d=>d.date.startsWith(key)).reduce((s,d)=>s+d.amount,0);const me=yearExpenses.filter(e=>e.expense_date.startsWith(key)).reduce((s,e)=>s+e.amount,0);return {key,label:new Date(Number(year),i,1).toLocaleDateString("de-DE",{month:"long"}),income:mi,costs:me,profit:mi-me};});
+  return <div className="calculation-page">
+    <div className="calculation-toolbar"><div><h2>Gewinn- und Jahresübersicht</h2><p>Rechnungen und Betriebsausgaben nach Monat ausgewertet</p></div><div className="calculation-actions"><label>Geschäftsjahr<select value={year} onChange={e=>setYear(e.target.value)}>{years.map(y=><option key={y}>{y}</option>)}</select></label><button className="btn btn-gold" onClick={onAddExpense}><Plus size={16}/> Ausgabe erfassen</button></div></div>
+    <div className="calculation-warning"><ShieldCheck size={17}/><span>Demo-Auswertung anhand gespeicherter Rechnungsbeträge und Ausgaben. Der Überschuss ist eine vereinfachte Brutto-Berechnung, keine steuerliche Gewinnermittlung.</span></div>
+    <div className="metric-grid calculation-metrics"><Metric title="Rechnungen / Einnahmen" value={money(income)} change={`${yearDocs.length} Rechnungen im Jahr ${year}`} icon={<ReceiptText size={18}/>} tone="gold"/><Metric title="Erfasste Ausgaben" value={money(costs)} change={`${yearExpenses.length} Ausgaben im Jahr ${year}`} icon={<Wallet size={18}/>} tone="silver"/><Metric title="Überschuss vor Steuern" value={money(profit)} change="Einnahmen minus Ausgaben" icon={<Activity size={18}/>} tone={profit>=0?"gold":"gray"}/></div>
+    <section className="panel table-panel"><div className="panel-head"><div><h2>Monatliche Auswertung {year}</h2><p>Jeder Monat mit Einnahmen, Ausgaben und Ergebnis</p></div></div><div className="table-wrap"><table><thead><tr><th>Monat</th><th className="numeric">Einnahmen</th><th className="numeric">Ausgaben</th><th className="numeric">Überschuss</th></tr></thead><tbody>{months.map(m=><tr key={m.key}><td><strong>{m.label}</strong></td><td className="numeric">{money(m.income)}</td><td className="numeric">{money(m.costs)}</td><td className={`numeric ${m.profit<0?"text-warn":"text-green"}`}><strong>{money(m.profit)}</strong></td></tr>)}</tbody><tfoot><tr><th>Jahressumme</th><th className="numeric">{money(income)}</th><th className="numeric">{money(costs)}</th><th className="numeric">{money(profit)}</th></tr></tfoot></table></div></section>
+    <section className="panel table-panel"><div className="panel-head"><div><h2>Alle Rechnungen {year}</h2><p>Einzelne Einnahmen, nach Datum sortiert</p></div><span className="table-count">{yearDocs.length} Einträge</span></div><div className="table-wrap"><table><thead><tr><th>Datum</th><th>Rechnungsnummer</th><th>Kunde</th><th className="numeric">Betrag</th><th>Status</th></tr></thead><tbody>{[...yearDocs].sort((a,b)=>b.date.localeCompare(a.date)).map(d=><tr key={d.id}><td>{dateFmt(d.date)}</td><td>{d.number}</td><td>{d.customer}</td><td className="numeric">{money(d.amount)}</td><td><span className="status-badge neutral">{d.status}</span></td></tr>)}{!yearDocs.length&&<tr><td colSpan={5}>Für dieses Jahr sind keine Rechnungen vorhanden.</td></tr>}</tbody></table></div></section>
+    <section className="panel table-panel"><div className="panel-head"><div><h2>Alle Ausgaben {year}</h2><p>Erfasste Betriebsausgaben im Jahresverlauf</p></div><span className="table-count">{yearExpenses.length} Einträge</span></div><div className="table-wrap"><table><thead><tr><th>Datum</th><th>Bezeichnung</th><th>Kategorie</th><th className="numeric">Betrag</th></tr></thead><tbody>{[...yearExpenses].sort((a,b)=>b.expense_date.localeCompare(a.expense_date)).map(e=><tr key={e.id}><td>{dateFmt(e.expense_date)}</td><td><strong>{e.description}</strong>{e.notes&&<small className="expense-note">{e.notes}</small>}</td><td>{e.category}</td><td className="numeric">{money(e.amount)}</td></tr>)}{!yearExpenses.length&&<tr><td colSpan={4}>Noch keine Ausgaben erfasst. Nutze „Ausgabe erfassen“.</td></tr>}</tbody></table></div></section>
+  </div>;
+}
+function Expenses({ expenses, onAdd }: { expenses: Expense[]; onAdd: () => void }) {
+  return <section className="panel table-panel"><div className="panel-head"><div><h2>Ausgabenverwaltung</h2><p>Alle gespeicherten Betriebsausgaben</p></div><button className="btn btn-gold" onClick={onAdd}><Plus size={16}/> Ausgabe erfassen</button></div><div className="table-wrap"><table><thead><tr><th>Datum</th><th>Bezeichnung</th><th>Kategorie</th><th className="numeric">Betrag</th></tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td>{dateFmt(e.expense_date)}</td><td>{e.description}</td><td>{e.category}</td><td className="numeric">{money(e.amount)}</td></tr>)}{!expenses.length&&<tr><td colSpan={4}>Noch keine Ausgaben gespeichert.</td></tr>}</tbody></table></div></section>;
 }
 function SettingsPage({ configured, liveData }: { configured: boolean; liveData: boolean }) {
   return <div className="settings-grid"><div className="panel settings-panel"><h2>Unternehmensprofil</h2><p>Angaben für spätere Angebots- und Rechnungsvorlagen.</p><div className="setting-line"><span>Firmenname</span><strong>T.S. Serviceleistungen</strong></div><div className="setting-line"><span>Bereich</span><strong>Digitale Lösungen</strong></div><div className="setting-line"><span>Design</span><strong>Silber · Weiß · Gold</strong></div></div><div className="panel settings-panel"><h2>Systemstatus</h2><div className="setting-line"><span>Supabase-Variablen</span><strong className={configured?"text-green":"text-warn"}>{configured?"Konfiguriert":"Noch nicht gesetzt"}</strong></div><div className="setting-line"><span>Datenquelle</span><strong>{liveData?"Supabase":"Lokale Demo"}</strong></div><div className="setting-line"><span>PDF-Erstellung</span><strong>Geplant</strong></div><div className="setting-line"><span>Demo-Reset</span><strong>Nur lokale Vorschau</strong></div></div></div>;
