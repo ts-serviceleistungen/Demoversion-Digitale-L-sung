@@ -221,7 +221,7 @@ export default function App() {
           {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Berechnung" && <Calculation docs={invoices} expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} />}
-          {tab === "Ausgaben" && <Expenses expenses={expenses} onAdd={() => setShowExpenseForm(true)} onAddPhoto={() => { setShowExpenseForm(true); document.getElementById("receipt-camera-input")?.click(); }} /> }
+          {tab === "Ausgaben" && <Expenses expenses={expenses} onAdd={() => setShowExpenseForm(true)} onAddPhoto={() => setShowExpenseForm(true)} /> }
           {tab === "Einstellungen" && <SettingsPage configured={isSupabaseConfigured} liveData={liveData} />}
 
           <footer>© 2026 T.S. Serviceleistungen · Digitale Lösungen <span>•</span> Demo-Version – Musterwerte, keine produktive Buchhaltungssoftware</footer>
