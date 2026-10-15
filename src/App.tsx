@@ -397,7 +397,9 @@ export default function App() {
   );
 }
 
-function kindLabel(kind: "Angebot" | "Rechnung") { return kind === "Angebot" ? "Das Angebot" : "Die Rechnung"; }\n\nfunction Login({ email, setEmail, password, setPassword, onSubmit, error, configured }: {
+function kindLabel(kind: "Angebot" | "Rechnung") { return kind === "Angebot" ? "Das Angebot" : "Die Rechnung"; }
+
+function Login({ email, setEmail, password, setPassword, onSubmit, error, configured }: {
   email: string; setEmail: (v: string) => void; password: string; setPassword: (v: string) => void;
   onSubmit: (e: React.FormEvent) => void; error: string; configured: boolean;
 }) {
