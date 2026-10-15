@@ -211,7 +211,7 @@ export default function App() {
         </section>
       </main>
 
-      {selectedDoc && <Modal title={`${selectedDoc.kind} ${selectedDoc.number}`} onClose={() => setSelectedDoc(null)}>
+      {selectedDoc && <Modal title={`${selectedDoc.kind} ${selectedDoc.number}`} className="modal-preview" onClose={() => setSelectedDoc(null)}>
         <DocumentPreview doc={selectedDoc} companyId={companyId} onClose={() => setSelectedDoc(null)} onDelete={() => void deleteDocument(selectedDoc)} deleting={documentDeleting} />
       </Modal>}
 
@@ -517,7 +517,7 @@ function DocumentPreview({ doc, companyId, onClose, onDelete, deleting }: { doc:
     {loading && <p className="form-note">Dokumentdetails werden geladen …</p>}
     {loadError && <p className="error-message">Details konnten nicht geladen werden: {loadError}</p>}
     <article className="customer-document">
-      <header className="customer-document-brand"><div className="brand-mark">TS<span>•</span></div><div><strong>{business?.name || "T.S. Serviceleistungen: Digitale Lösungen"}</strong><small>{[business?.street, [business?.postal_code, business?.city].filter(Boolean).join(" "), business?.country].filter(Boolean).join(" · ")}</small><small>{[business?.email, business?.phone].filter(Boolean).join(" · ")}</small></div></header>
+      <header className="customer-document-brand"><div className="document-logo-mark"><Sparkles size={22}/><span>TS</span></div><div className="document-brand-copy"><strong>{business?.name || "T.S. Serviceleistungen: Digitale Lösungen"}</strong><small>{[business?.street, [business?.postal_code, business?.city].filter(Boolean).join(" "), business?.country].filter(Boolean).join(" · ") || "Digitale Lösungen · Deutschland"}</small><small>{[business?.email, business?.phone].filter(Boolean).join(" · ") || "Kunden · Angebote · Rechnungen"}</small></div><div className="document-brand-label">SERVICE<br/>DIGITAL</div></header>
       <div className="customer-document-title"><div><span className="eyebrow">{doc.kind === "Angebot" ? "ANGEBOT" : "RECHNUNG"}</span><h2>{doc.number}</h2></div><div className="document-date"><span>Datum</span><strong>{dateFmt(doc.date)}</strong>{doc.kind === "Angebot" && validUntil && <><span>Gültig bis</span><strong>{dateFmt(validUntil)}</strong></>}</div></div>
       <div className="document-recipient"><span>{doc.kind === "Angebot" ? "ANGEBOT FÜR" : "RECHNUNGSEMPFÄNGER"}</span><strong>{customer?.name || doc.customer}</strong>{customer?.street && <span>{customer.street}</span>}<span>{[customer?.postal_code, customer?.city].filter(Boolean).join(" ")}</span><span>{customer?.country || "Deutschland"}</span>{customer?.email && <span>{customer.email}</span>}</div>
       {doc.kind === "Angebot" && <p className="document-intro">{notes || "Vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen folgendes Angebot."}</p>}
