@@ -213,3 +213,44 @@
   .modal-preview .customer-document-footer { padding-top: 2mm !important; font-size: 6pt !important; line-height: 1.25 !important; overflow-wrap: anywhere !important; }
   .modal-preview .customer-document > * { break-inside: avoid !important; }
 }
+
+
+/* Geschäftsdokumente nach dem klassischen T.S.-Serviceleistungen-Vorbild */
+.document-sender-line{font-size:9px;color:#69717b;padding-bottom:7px;border-bottom:1px solid #c8cbd0;margin-top:-12px}
+.document-address-meta{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(210px,.7fr);gap:28px;align-items:start}
+.document-address-meta .document-recipient{padding-top:5px}
+.document-meta-list{display:grid;gap:0;border:1px solid #e2e4e7;border-radius:8px;overflow:hidden;background:#fafafa}
+.document-meta-list>div{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid #e6e7e9;font-size:10px}
+.document-meta-list>div:last-child{border-bottom:0}
+.document-meta-list span{color:#7a818a}
+.document-meta-list strong{text-align:right;color:#30343a}
+.document-bottom-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.8fr);gap:22px;align-items:start}
+.document-bottom-grid .document-terms{border-top:1px solid #d8dadd;padding-top:12px}
+.document-bottom-grid .document-totals{width:100%;padding:14px;background:#f0eee6}
+.customer-document-footer{display:grid;gap:4px;overflow-wrap:anywhere}
+.customer-document-footer strong{color:#3b4148}
+@media(max-width:680px){.document-address-meta,.document-bottom-grid{grid-template-columns:1fr;gap:14px}.document-meta-list{order:-1}}
+@media print{
+  @page{size:A4 portrait;margin:8mm}
+  .modal-preview .customer-document{gap:2.3mm!important;font-size:8pt!important;line-height:1.2!important}
+  .modal-preview .customer-document-brand{padding:2.5mm 3mm!important}
+  .modal-preview .document-logo-mark{flex-basis:9mm!important;width:9mm!important;height:9mm!important}
+  .modal-preview .customer-document-title{padding:0 0 2mm!important}
+  .modal-preview .customer-document-title h2{font-size:18pt!important}
+  .modal-preview .document-sender-line{font-size:6pt!important;padding-bottom:1mm!important;margin-top:-1mm!important}
+  .modal-preview .document-address-meta{grid-template-columns:1.25fr .75fr!important;gap:5mm!important}
+  .modal-preview .document-recipient{font-size:7pt!important;gap:.4mm!important}
+  .modal-preview .document-recipient strong{font-size:8pt!important}
+  .modal-preview .document-meta-list>div{font-size:6.3pt!important;padding:1.2mm 1.5mm!important;gap:2mm!important}
+  .modal-preview .document-intro{font-size:6.8pt!important;padding:1.5mm 2mm!important;line-height:1.2!important}
+  .modal-preview .document-items-table th{padding:1.4mm 1mm!important}
+  .modal-preview .document-items-table td{padding:1.4mm 1mm!important;font-size:6.5pt!important}
+  .modal-preview .document-bottom-grid{grid-template-columns:1fr .85fr!important;gap:4mm!important}
+  .modal-preview .document-bottom-grid .document-terms{font-size:6.5pt!important;padding-top:1.5mm!important;line-height:1.25!important}
+  .modal-preview .document-bottom-grid .document-terms p{font-size:6.2pt!important;line-height:1.25!important}
+  .modal-preview .document-bottom-grid .document-totals{gap:1mm!important;padding:2mm!important}
+  .modal-preview .document-bottom-grid .document-totals>div{font-size:6.5pt!important}
+  .modal-preview .document-bottom-grid .document-total strong{font-size:11pt!important}
+  .modal-preview .customer-document-footer{font-size:5.5pt!important;padding-top:1.5mm!important;line-height:1.2!important}
+  .modal-preview .customer-document>*{break-inside:avoid!important}
+}
