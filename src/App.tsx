@@ -290,6 +290,9 @@ export default function App() {
             .filter(item => item.description && item.quantity > 0 && item.unit_price >= 0);
           if (!validItems.length) { setNotice("Bitte mindestens eine vollständige Leistungsposition mit Menge und Preis eintragen."); return; }
           const amount = validItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+          const vatRate = 19;
+          const taxAmount = Math.round(amount * vatRate) / 100;
+          const grossAmount = Math.round((amount + taxAmount) * 100) / 100;
           const issueDate = new Date().toISOString().slice(0, 10);
           setDocumentSaving(true);
           setNotice("");
@@ -314,15 +317,16 @@ export default function App() {
                 currency: "EUR",
                 notes: docDescription.trim(),
                 subtotal: amount,
-                total_amount: amount,
+                tax_amount: taxAmount,
+                total_amount: grossAmount,
                 created_by: (await supabase.auth.getUser()).data.user?.id ?? null
               }).select("id").single();
               if (error) throw error;
               const { error: itemError } = await supabase.from("invoice_items").insert(validItems.map((item, index) => ({
                 company_id: companyId, invoice_id: savedInvoice.id, position: index + 1,
                 description: item.description, quantity: item.quantity, unit: item.unit,
-                unit_price: item.unit_price, discount_percent: 0, tax_rate: 0,
-                line_total: item.quantity * item.unit_price
+                unit_price: item.unit_price, discount_percent: 0, tax_rate: vatRate,
+                line_total: Math.round(item.quantity * item.unit_price * 100) / 100
               })));
               if (itemError) throw itemError;
             } else {
@@ -352,16 +356,16 @@ export default function App() {
                 terms: "Dieses Angebot ist 14 Tage gültig. Die Abrechnung erfolgt nach den aufgeführten Positionen.",
                 subtotal: amount,
                 discount_amount: 0,
-                tax_amount: 0,
-                total_amount: amount,
+                tax_amount: taxAmount,
+                total_amount: grossAmount,
                 created_by: (await supabase.auth.getUser()).data.user?.id ?? null
               }).select("id").single();
               if (error) throw error;
               const { error: itemError } = await supabase.from("offer_items").insert(validItems.map((item, index) => ({
                 company_id: companyId, offer_id: savedOffer.id, position: index + 1,
                 description: item.description, quantity: item.quantity, unit: item.unit,
-                unit_price: item.unit_price, discount_percent: 0, tax_rate: 0,
-                line_total: item.quantity * item.unit_price
+                unit_price: item.unit_price, discount_percent: 0, tax_rate: vatRate,
+                line_total: Math.round(item.quantity * item.unit_price * 100) / 100
               })));
               if (itemError) throw itemError;
             }
@@ -387,9 +391,9 @@ export default function App() {
               <label>Einzelpreis (€)<input type="number" min="0" step="0.01" required value={item.unit_price} disabled={documentSaving} onChange={e => setDocItems(items => items.map((row, i) => i === index ? {...row, unit_price:e.target.value} : row))}/></label>
               <div className="line-item-total"><span>Gesamt</span><strong>{money(Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.unit_price)||0))}</strong>{docItems.length > 1 && <button type="button" className="text-btn" aria-label="Position entfernen" disabled={documentSaving} onClick={() => setDocItems(items => items.filter((_,i)=>i!==index))}><Trash2 size={14}/> Entfernen</button>}</div>
             </div>)}
-            <div className="line-items-sum"><span>Zwischensumme (Demo ohne Steuer)</span><strong>{money(docItems.reduce((sum,item)=>sum + Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.unit_price)||0),0))}</strong></div>
+            <div className="line-items-sum"><span>Zwischensumme (netto)</span><strong>{money(docItems.reduce((sum,item)=>sum + Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.unit_price)||0),0))}</strong></div><div className="line-items-sum"><span>19 % MwSt.</span><strong>{money(docItems.reduce((sum,item)=>sum + Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.unit_price)||0),0)*0.19)}</strong></div><div className="line-items-sum"><span>Gesamtbetrag (brutto)</span><strong>{money(docItems.reduce((sum,item)=>sum + Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.unit_price)||0),0)*1.19)}</strong></div>
           </div>
-          <p className="form-note">{kindLabel(showDocForm)} wird mit Positionen gespeichert. Steuersätze sind derzeit auf 0 % gesetzt; bitte die Demo-Dokumente nicht als rechtsverbindliche Buchhaltungsunterlagen verwenden.</p>
+          <p className="form-note">{kindLabel(showDocForm)} wird mit Einzelpositionen und 19 % MwSt. gespeichert. Dies ist eine Demo-Voreinstellung; prüfe vor produktiver Nutzung, ob der Steuersatz für den konkreten Vorgang gilt.</p>
           <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowDocForm(null)} disabled={documentSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={documentSaving}>{documentSaving ? "Wird gespeichert …" : "Entwurf speichern"}</button></div>
         </form>
       </Modal>}
@@ -516,7 +520,7 @@ function DocumentPreview({ doc, companyId, onClose, onDelete, deleting }: { doc:
       <div className="document-recipient"><span>ANGEBOT FÜR</span><strong>{customer?.name || doc.customer}</strong>{customer?.street && <span>{customer.street}</span>}<span>{[customer?.postal_code, customer?.city].filter(Boolean).join(" ")}</span><span>{customer?.country || "Deutschland"}</span>{customer?.email && <span>{customer.email}</span>}</div>
       {doc.kind === "Angebot" && <p className="document-intro">{notes || "Vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen folgendes Angebot."}</p>}
       <div className="document-items-table"><table><thead><tr><th>Pos.</th><th>Leistung / Artikel</th><th className="align-right">Menge</th><th>Einheit</th><th className="align-right">Einzelpreis</th><th className="align-right">Gesamt</th></tr></thead><tbody>{lines.map((line,index)=><tr key={index}><td>{index+1}</td><td>{line.description}</td><td className="align-right">{new Intl.NumberFormat("de-DE",{maximumFractionDigits:2}).format(line.quantity)}</td><td>{line.unit}</td><td className="align-right">{money(line.unit_price)}</td><td className="align-right">{money(line.line_total)}</td></tr>)}</tbody></table></div>
-      <div className="document-totals"><div><span>Zwischensumme</span><strong>{money(subtotal)}</strong></div>{tax > 0 && <div><span>Steuer</span><strong>{money(tax)}</strong></div>}<div className="document-total"><span>Gesamtbetrag</span><strong>{money(subtotal + tax)}</strong></div><small>Steuerangaben und Summen sind in dieser Demo nicht für die produktive Buchhaltung freigegeben.</small></div>
+      <div className="document-totals"><div><span>Zwischensumme</span><strong>{money(subtotal)}</strong></div><div><span>MwSt. ({lines.length ? `${lines[0].tax_rate}%` : "19%"})</span><strong>{money(tax)}</strong></div><div className="document-total"><span>Gesamtbetrag (brutto)</span><strong>{money(subtotal + tax)}</strong></div><small>Demo-Dokument – bitte Angaben und steuerliche Behandlung vor produktiver Verwendung prüfen.</small></div>
       {doc.kind === "Angebot" && <div className="document-terms"><strong>Hinweise und Angebotsbedingungen</strong><p>{terms || "Bitte prüfen Sie die aufgeführten Leistungen und Mengen. Bei Rückfragen sprechen Sie uns gerne an."}</p></div>}
       <footer className="customer-document-footer">{[business?.tax_number && `Steuernummer: ${business.tax_number}`, business?.vat_id && `USt-IdNr.: ${business.vat_id}`, business?.iban && `IBAN: ${business.iban}`, business?.bic && `BIC: ${business.bic}`].filter(Boolean).join(" · ") || "T.S. Serviceleistungen · Digitale Lösungen"}</footer>
     </article>
