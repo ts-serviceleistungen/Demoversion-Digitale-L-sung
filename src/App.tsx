@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowUpRight, Bell, ChevronDown, CircleHelp, Download, FileCheck2,
   FilePlus2, FileText, Filter, LayoutDashboard, LogOut, Menu, MoreHorizontal,
-  Plus, ReceiptText, RefreshCw, Search, Settings, ShieldCheck, Sparkles, Users,
+  Plus, ReceiptText, RefreshCw, Search, Settings, ShieldCheck, Sparkles, Users, Trash2, Eye,
   Wallet, X
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
@@ -53,6 +53,8 @@ export default function App() {
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [customerSaving, setCustomerSaving] = useState(false);
   const [documentSaving, setDocumentSaving] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<Doc | null>(null);
+  const [documentDeleting, setDocumentDeleting] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
@@ -108,6 +110,31 @@ export default function App() {
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setLoginError("Anmeldung fehlgeschlagen. Bitte E-Mail und Passwort prüfen.");
+  }
+
+  async function deleteDocument(doc: Doc) {
+    if (!supabase || !companyId || !liveData) {
+      setNotice("Löschen nicht möglich: Keine aktive Supabase-Verbindung.");
+      return;
+    }
+    const confirmed = window.confirm(`Soll ${doc.kind.toLowerCase()} ${doc.number} wirklich dauerhaft gelöscht werden?`);
+    if (!confirmed) return;
+    setDocumentDeleting(true);
+    setNotice("");
+    try {
+      const table = doc.kind === "Rechnung" ? "invoices" : "offers";
+      const { error } = await supabase.from(table).delete().eq("id", doc.id).eq("company_id", companyId);
+      if (error) throw error;
+      setSelectedDoc(current => current?.id === doc.id ? null : current);
+      await loadLiveData();
+      setNotice(`${doc.kind} ${doc.number} wurde gelöscht.`);
+    } catch (error) {
+      console.error("Document delete failed:", error);
+      const message = error instanceof Error ? error.message : "Unbekannter Datenbankfehler";
+      setNotice(`${doc.kind} konnte nicht gelöscht werden: ${message}`);
+    } finally {
+      setDocumentDeleting(false);
+    }
   }
 
   async function signOut() {
@@ -173,15 +200,29 @@ export default function App() {
           </div>
 
           {tab === "Dashboard" && <Dashboard invoices={invoices} offers={offers} customers={customers} totalInvoiced={totalInvoiced} outstanding={outstanding} offerVolume={offerVolume} onNewOffer={() => setShowDocForm("Angebot")} onNewInvoice={() => setShowDocForm("Rechnung")} />}
-          {tab === "Kunden" && <Customers customers={filteredCustomers} onAdd={() => setShowCustomerForm(true)} docs={docs} />}
-          {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} />}
-          {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} />}
+          {tab === "Kunden" && <Customers customers={filteredCustomers} onAdd={() => setShowCustomerForm(true)} docs={docs} onOpenDoc={setSelectedDoc} onDeleteDoc={deleteDocument} />}
+          {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
+          {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Ausgaben" && <Expenses />}
           {tab === "Einstellungen" && <SettingsPage configured={isSupabaseConfigured} liveData={liveData} />}
 
           <footer>© 2026 T.S. Serviceleistungen · Digitale Lösungen <span>•</span> Demo-Version – Musterwerte, keine produktive Buchhaltungssoftware</footer>
         </section>
       </main>
+
+      {selectedDoc && <Modal title={`${selectedDoc.kind} ${selectedDoc.number}`} onClose={() => setSelectedDoc(null)}>
+        <div className="form-grid">
+          <div className="setting-line"><span>Kunde</span><strong>{selectedDoc.customer}</strong></div>
+          <div className="setting-line"><span>Datum</span><strong>{dateFmt(selectedDoc.date)}</strong></div>
+          <div className="setting-line"><span>Status</span><strong>{selectedDoc.status}</strong></div>
+          <div className="setting-line"><span>Betrag</span><strong>{money(selectedDoc.amount)}</strong></div>
+          <p className="form-note">Dies ist die gespeicherte Dokumentübersicht. Bearbeiten und PDF-Erstellung sind noch nicht verfügbar.</p>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-light" onClick={() => setSelectedDoc(null)}>Schließen</button>
+            <button type="button" className="btn btn-light" disabled={documentDeleting} onClick={() => void deleteDocument(selectedDoc)}><Trash2 size={16}/> {documentDeleting ? "Wird gelöscht …" : "Dokument löschen"}</button>
+          </div>
+        </div>
+      </Modal>}
 
       {showCustomerForm && <Modal title="Neuen Kunden anlegen" onClose={() => { if (!customerSaving) setShowCustomerForm(false); }}>
         <form className="form-grid" onSubmit={async e => {
@@ -383,7 +424,7 @@ function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, of
         <div className="panel-note"><Activity size={16}/> Status basiert auf den sichtbaren Demo-Datensätzen.</div>
       </section>
     </div>
-    <section className="panel table-panel"><div className="panel-head"><div><h2>Zuletzt bearbeitete Dokumente</h2><p>Rechnungen und Angebote im Überblick</p></div><span className="table-count">{invoices.length+offers.length} Dokumente</span></div><DocumentTable docs={[...invoices,...offers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6)}/></section>
+    <section className="panel table-panel"><div className="panel-head"><div><h2>Zuletzt bearbeitete Dokumente</h2><p>Rechnungen und Angebote im Überblick</p></div><span className="table-count">{invoices.length+offers.length} Dokumente</span></div><DocumentTable docs={[...invoices,...offers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6)} onOpen={setSelectedDoc} onDelete={deleteDocument}/></section>
   </>;
 }
 
@@ -393,20 +434,20 @@ function Metric({ title, value, change, icon, tone }: { title: string; value: st
 function StatusRow({ label, value, total, tone }: { label: string; value: number; total: number; tone: string }) {
   return <div className="status-row"><div className="status-label"><span>{label}</span><strong>{value}</strong></div><div className="progress"><span className={tone} style={{width: `${Math.min(100, value/total*100)}%`}}/></div></div>;
 }
-function DocumentTable({ docs }: { docs: Doc[] }) {
+function DocumentTable({ docs, onOpen, onDelete }: { docs: Doc[]; onOpen?: (doc: Doc) => void; onDelete?: (doc: Doc) => void }) {
   if (!docs.length) return <div className="empty">Noch keine Dokumente vorhanden.</div>;
-  return <div className="table-wrap"><table><thead><tr><th>Dokument</th><th>Kunde</th><th>Datum</th><th>Status</th><th className="align-right">Betrag</th></tr></thead><tbody>{docs.map(d=><tr key={d.id}><td><span className={`doc-icon ${d.kind==="Rechnung"?"invoice":"offer"}`}>{d.kind==="Rechnung"?<ReceiptText size={16}/>:<FileText size={16}/>}</span><span className="doc-name"><strong>{d.number}</strong><small>{d.kind}</small></span></td><td>{d.customer}</td><td>{dateFmt(d.date)}</td><td><span className={`status-badge ${d.status==="Bezahlt"||d.status==="Angenommen"?"success":d.status==="Offen"?"pending":"neutral"}`}><i/>{d.status}</span></td><td className="align-right amount">{money(d.amount)}</td></tr>)}</tbody></table></div>;
+  return <div className="table-wrap"><table><thead><tr><th>Dokument</th><th>Kunde</th><th>Datum</th><th>Status</th><th className="align-right">Betrag</th><th>Aktionen</th></tr></thead><tbody>{docs.map(d=><tr key={d.id}><td><span className={`doc-icon ${d.kind==="Rechnung"?"invoice":"offer"}`}>{d.kind==="Rechnung"?<ReceiptText size={16}/>:<FileText size={16}/>}</span><span className="doc-name"><strong>{d.number}</strong><small>{d.kind}</small></span></td><td>{d.customer}</td><td>{dateFmt(d.date)}</td><td><span className={`status-badge ${d.status==="Bezahlt"||d.status==="Angenommen"?"success":d.status==="Offen"?"pending":"neutral"}`}><i/>{d.status}</span></td><td className="align-right amount">{money(d.amount)}</td><td><div className="row-actions">{onOpen && <button type="button" className="text-btn" onClick={() => onOpen(d)} aria-label={`${d.number} öffnen`}><Eye size={15}/> Öffnen</button>}{onDelete && <button type="button" className="text-btn" onClick={() => onDelete(d)} aria-label={`${d.number} löschen`}><Trash2 size={15}/> Löschen</button>}</div></td></tr>)}</tbody></table></div>;
 }
-function Customers({ customers, onAdd, docs }: { customers: Customer[]; onAdd: () => void; docs: Doc[] }) {
+function Customers({ customers, onAdd, docs, onOpenDoc, onDeleteDoc }: { customers: Customer[]; onAdd: () => void; docs: Doc[]; onOpenDoc: (doc: Doc) => void; onDeleteDoc: (doc: Doc) => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   const customer = customers.find(c=>c.id===selected);
   return <div className="panel table-panel"><div className="panel-head"><div><h2>Kunden</h2><p>Kundenstammdaten und zugehörige Dokumente</p></div><button className="btn btn-gold" onClick={onAdd}><Plus size={16}/> Neuer Kunde</button></div>
     <div className="table-wrap"><table><thead><tr><th>Kundennummer</th><th>Name</th><th>E-Mail</th><th>Ort</th><th></th></tr></thead><tbody>{customers.map(c=><tr key={c.id}><td>{c.customer_number}</td><td><strong>{c.name}</strong></td><td>{c.email||"—"}</td><td>{c.city||"—"}</td><td><button className="text-btn" onClick={()=>setSelected(selected===c.id?null:c.id)}>{selected===c.id?"Schließen":"Kundenakte öffnen"}</button></td></tr>)}</tbody></table></div>
-    {customer && <div className="customer-detail"><div><span className="eyebrow">KUNDENAKTE</span><h3>{customer.name}</h3><p>{customer.customer_number} · {customer.email||"Keine E-Mail hinterlegt"}</p></div><div className="customer-docs"><h4>Zugehörige Angebote und Rechnungen</h4><DocumentTable docs={docs.filter(d=>d.customer===customer.name)}/></div></div>}
+    {customer && <div className="customer-detail"><div><span className="eyebrow">KUNDENAKTE</span><h3>{customer.name}</h3><p>{customer.customer_number} · {customer.email||"Keine E-Mail hinterlegt"}</p></div><div className="customer-docs"><h4>Zugehörige Angebote und Rechnungen</h4><DocumentTable docs={docs.filter(d=>d.customer===customer.name)} onOpen={onOpenDoc} onDelete={onDeleteDoc}/></div></div>}
   </div>;
 }
-function Documents({ docs, kind, onNew }: { docs: Doc[]; kind: "Angebot"|"Rechnung"; onNew: () => void }) {
-  return <section className="panel table-panel"><div className="panel-head"><div><h2>{kind} verwalten</h2><p>Dokumente, Status und Beträge</p></div><button className="btn btn-gold" onClick={onNew}><Plus size={16}/> {kind} erstellen</button></div><div className="filter-strip"><span><Filter size={15}/> Alle Dokumente</span><span>{docs.length} Einträge</span></div><DocumentTable docs={docs}/></section>;
+function Documents({ docs, kind, onNew, onOpen, onDelete }: { docs: Doc[]; kind: "Angebot"|"Rechnung"; onNew: () => void; onOpen: (doc: Doc) => void; onDelete: (doc: Doc) => void }) {
+  return <section className="panel table-panel"><div className="panel-head"><div><h2>{kind} verwalten</h2><p>Dokumente, Status und Beträge</p></div><button className="btn btn-gold" onClick={onNew}><Plus size={16}/> {kind} erstellen</button></div><div className="filter-strip"><span><Filter size={15}/> Alle Dokumente</span><span>{docs.length} Einträge</span></div><DocumentTable docs={docs} onOpen={onOpen} onDelete={onDelete}/></section>;
 }
 function Expenses() {
   return <div className="panel empty-panel"><div className="empty-icon"><Wallet size={24}/></div><h2>Ausgabenverwaltung</h2><p>Die Datenbank ist vorbereitet. Eingabeformular, Belegupload und Auswertungen werden im nächsten Ausbauschritt ergänzt.</p><span className="status-badge neutral">In Vorbereitung</span></div>;
