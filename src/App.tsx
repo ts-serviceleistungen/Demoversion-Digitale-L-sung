@@ -11,7 +11,7 @@ type Tab = "Dashboard" | "Kunden" | "Angebote" | "Rechnungen" | "Berechnung" | "
 type Customer = { id: string; name: string; email?: string; city?: string; customer_number: string };
 type Doc = { id: string; number: string; customer: string; customerId?: string; date: string; amount: number; status: string; kind: "Angebot" | "Rechnung" };
 type DraftItem = { description: string; quantity: string; unit: string; unit_price: string };
-type Expense = { id: string; expense_date: string; description: string; category: string; amount: number; tax_amount: number; notes?: string };
+type Expense = { id: string; expense_date: string; description: string; category: string; amount: number; tax_amount: number; notes?: string; receipt_path?: string };
 
 const money = (n: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 const dateFmt = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString("de-DE");
@@ -52,6 +52,10 @@ export default function App() {
   const [expenseTax, setExpenseTax] = useState("0");
   const [expenseNotes, setExpenseNotes] = useState("");
   const [expenseSaving, setExpenseSaving] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState("");
+  const [receiptReading, setReceiptReading] = useState(false);
+  const [receiptReadError, setReceiptReadError] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
@@ -99,7 +103,7 @@ export default function App() {
       supabase.from("customers").select("id,customer_number,name,email,city").eq("company_id", currentCompanyId).order("customer_number"),
       supabase.from("invoices").select("id,company_id,customer_id,invoice_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
       supabase.from("offers").select("id,company_id,customer_id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
-      supabase.from("expenses").select("id,expense_date,description,category,amount,tax_amount,notes").eq("company_id", currentCompanyId).order("expense_date", { ascending: false })
+      supabase.from("expenses").select("id,expense_date,description,category,amount,tax_amount,notes,receipt_path").eq("company_id", currentCompanyId).order("expense_date", { ascending: false })
     ]);
     if (customerResult.error || invoiceResult.error || offerResult.error || expenseResult.error) {
       setNotice("Daten konnten nicht vollständig geladen werden. Bitte RLS und Unternehmensmitgliedschaft prüfen.");
@@ -110,7 +114,7 @@ export default function App() {
     const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Rechnung" }));
     const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Angebot" }));
     setDocs([...invoiceDocs, ...offerDocs]);
-    setExpenses((expenseResult.data ?? []).map((e) => ({ id:e.id, expense_date:e.expense_date, description:e.description, category:e.category ?? "Betriebsausgabe", amount:Number(e.amount), tax_amount:Number(e.tax_amount ?? 0), notes:e.notes ?? "" })));
+    setExpenses((expenseResult.data ?? []).map((e) => ({ id:e.id, expense_date:e.expense_date, description:e.description, category:e.category ?? "Betriebsausgabe", amount:Number(e.amount), tax_amount:Number(e.tax_amount ?? 0), notes:e.notes ?? "", receipt_path:e.receipt_path ?? "" })));
     setLiveData(true);
   }
 
@@ -217,7 +221,7 @@ export default function App() {
           {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Berechnung" && <Calculation docs={invoices} expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} />}
-          {tab === "Ausgaben" && <Expenses expenses={expenses} onAdd={() => setShowExpenseForm(true)} />}
+          {tab === "Ausgaben" && <Expenses expenses={expenses} onAdd={() => setShowExpenseForm(true)} onAddPhoto={() => { setShowExpenseForm(true); document.getElementById("receipt-camera-input")?.click(); }} /> }
           {tab === "Einstellungen" && <SettingsPage configured={isSupabaseConfigured} liveData={liveData} />}
 
           <footer>© 2026 T.S. Serviceleistungen · Digitale Lösungen <span>•</span> Demo-Version – Musterwerte, keine produktive Buchhaltungssoftware</footer>
@@ -228,7 +232,7 @@ export default function App() {
         <DocumentPreview doc={selectedDoc} companyId={companyId} onClose={() => setSelectedDoc(null)} onDelete={() => void deleteDocument(selectedDoc)} deleting={documentDeleting} />
       </Modal>}
 
-      {showExpenseForm && <Modal title="Neue Ausgabe erfassen" onClose={() => { if (!expenseSaving) setShowExpenseForm(false); }}>
+      {showExpenseForm && <Modal title="Ausgabe mit Beleg erfassen" onClose={() => { if (!expenseSaving && !receiptReading) { setShowExpenseForm(false); setReceiptPreview(""); setReceiptFile(null); } }}>
         <form className="form-grid" onSubmit={async e => {
           e.preventDefault();
           if (!supabase || !companyId || !liveData) { setNotice("Ausgabe kann nur mit aktiver Supabase-Verbindung gespeichert werden."); return; }
@@ -236,21 +240,65 @@ export default function App() {
           if (!expenseDescription.trim() || !Number.isFinite(amount) || amount < 0 || taxAmount < 0) return;
           setExpenseSaving(true); setNotice("");
           try {
-            const { error } = await supabase.from("expenses").insert({ company_id: companyId, expense_date: expenseDate, description: expenseDescription.trim(), category: expenseCategory, amount, tax_amount: taxAmount, notes: expenseNotes.trim() || null });
+            let receiptPath: string | null = null;
+            if (receiptFile) {
+              const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+              receiptPath = `${companyId}/${Date.now()}-${safeName}`;
+              const { error: uploadError } = await supabase.storage.from("expense-receipts").upload(receiptPath, receiptFile, { upsert: false, contentType: receiptFile.type || "application/octet-stream" });
+              if (uploadError) throw new Error("Belegfoto konnte nicht archiviert werden: " + uploadError.message);
+            }
+            const { error } = await supabase.from("expenses").insert({ company_id: companyId, expense_date: expenseDate, description: expenseDescription.trim(), category: expenseCategory, amount, tax_amount: taxAmount, notes: expenseNotes.trim() || null, receipt_path: receiptPath });
             if (error) throw error;
-            setExpenseDescription(""); setExpenseAmount(""); setExpenseTax("0"); setExpenseNotes(""); setShowExpenseForm(false);
-            await loadLiveData(); setNotice("Ausgabe wurde gespeichert und in die Berechnung übernommen.");
+            setExpenseDescription(""); setExpenseAmount(""); setExpenseTax("0"); setExpenseNotes(""); setReceiptFile(null); setReceiptPreview(""); setShowExpenseForm(false);
+            await loadLiveData(); setNotice("Ausgabe wurde gespeichert. Der Beleg ist im geschützten Belegarchiv abgelegt.");
           } catch (err) { setNotice("Ausgabe konnte nicht gespeichert werden: " + (err instanceof Error ? err.message : "Datenbankfehler")); }
           finally { setExpenseSaving(false); }
         }}>
+          <div className="receipt-capture">
+            <div><strong>Beleg fotografieren oder hochladen</strong><p>Foto direkt mit der Handykamera aufnehmen. Die KI liest anschließend Datum, Händler und Beträge aus.</p></div>
+            <label className="btn btn-light receipt-pick"><FilePlus2 size={16}/> Foto / Datei auswählen
+              <input className="receipt-file-input" type="file" accept="image/*,application/pdf" capture="environment" onChange={async e => {
+                const file = e.currentTarget.files?.[0];
+                if (!file) return;
+                setReceiptFile(file); setReceiptReadError(""); setReceiptPreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : "");
+                if (file.type === "application/pdf") { setReceiptReadError("PDF ausgewählt. Die automatische KI-Auslesung ist aktuell für Fotos vorgesehen; bitte fotografiere oder lade den Beleg als Bild hoch."); return; }
+                if (!file.type.startsWith("image/")) { setReceiptReadError("Bitte wähle ein Foto oder eine Bilddatei aus."); return; }
+                setReceiptReading(true);
+                try {
+                  const base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onerror = () => reject(new Error("Foto konnte nicht gelesen werden."));
+                    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+                    reader.readAsDataURL(file);
+                  });
+                  const { data, error } = await supabase!.functions.invoke("extract-expense-receipt", { body: { image_base64: base64, mime_type: file.type } });
+                  if (error) throw error;
+                  if (data?.error) throw new Error(data.error);
+                  if (data?.expense_date) setExpenseDate(data.expense_date);
+                  if (data?.description) setExpenseDescription(data.description);
+                  if (data?.category) setExpenseCategory(data.category);
+                  if (data?.amount !== undefined && data?.amount !== null) setExpenseAmount(String(data.amount));
+                  if (data?.tax_amount !== undefined && data?.tax_amount !== null) setExpenseTax(String(data.tax_amount));
+                  if (data?.notes) setExpenseNotes(data.notes);
+                  setNotice("KI-Auslesung abgeschlossen. Bitte prüfe Datum und Beträge vor dem Speichern.");
+                } catch (err) {
+                  setReceiptReadError("KI-Auslesung nicht möglich: " + (err instanceof Error ? err.message : "Unbekannter Fehler") + ". Du kannst die Felder weiterhin manuell ausfüllen.");
+                } finally { setReceiptReading(false); }
+              }} />
+            </label>
+            {receiptPreview && <img className="receipt-preview" src={receiptPreview} alt="Vorschau des Belegfotos" />}
+            {receiptFile && <span className="receipt-file-name">{receiptFile.name}</span>}
+            {receiptReading && <p className="receipt-status"><Sparkles size={16}/> KI liest den Beleg aus …</p>}
+            {receiptReadError && <p className="receipt-error">{receiptReadError}</p>}
+          </div>
           <label>Datum<input type="date" required value={expenseDate} onChange={e=>setExpenseDate(e.target.value)} /></label>
-          <label>Bezeichnung<input required value={expenseDescription} onChange={e=>setExpenseDescription(e.target.value)} placeholder="z. B. Materialeinkauf" /></label>
+          <label>Bezeichnung / Händler<input required value={expenseDescription} onChange={e=>setExpenseDescription(e.target.value)} placeholder="z. B. Baumarkt / Materialeinkauf" /></label>
           <label>Kategorie<select value={expenseCategory} onChange={e=>setExpenseCategory(e.target.value)}><option>Betriebsausgabe</option><option>Material</option><option>Fahrzeug</option><option>Werkzeug</option><option>Software / Telefon</option><option>Versicherung</option><option>Fahrtkosten</option><option>Sonstiges</option></select></label>
-          <label>Ausgabenbetrag (€)<input type="number" min="0" step="0.01" required value={expenseAmount} onChange={e=>setExpenseAmount(e.target.value)} placeholder="0,00" /></label>
+          <label>Bruttobetrag (€)<input type="number" min="0" step="0.01" required value={expenseAmount} onChange={e=>setExpenseAmount(e.target.value)} placeholder="0,00" /></label>
           <label>Enthaltene MwSt. (€)<input type="number" min="0" step="0.01" value={expenseTax} onChange={e=>setExpenseTax(e.target.value)} /></label>
           <label>Notiz / Belegnummer<textarea rows={2} value={expenseNotes} onChange={e=>setExpenseNotes(e.target.value)} /></label>
-          <p className="form-note">Demo-Ausgabe. Der Betrag wird als eingegebener Ausgabenbetrag verbucht. Belege können später ergänzt werden.</p>
-          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={()=>setShowExpenseForm(false)} disabled={expenseSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={expenseSaving}>{expenseSaving?"Speichert …":"Ausgabe speichern"}</button></div>
+          <p className="form-note">Wichtig: KI-Ergebnisse vor dem Speichern prüfen. Der Bruttobetrag ist maßgeblich. Das Originalfoto wird beim Speichern geschützt archiviert.</p>
+          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={()=>{setShowExpenseForm(false);setReceiptPreview("");setReceiptFile(null);}} disabled={expenseSaving || receiptReading}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={expenseSaving || receiptReading}>{expenseSaving?"Speichert …":"Ausgabe speichern"}</button></div>
         </form>
       </Modal>}
       {showCustomerForm && <Modal title="Neuen Kunden anlegen" onClose={() => { if (!customerSaving) setShowCustomerForm(false); }}>
@@ -623,8 +671,8 @@ function Calculation({ docs, expenses, onAddExpense }: { docs: Doc[]; expenses: 
     <section className="panel table-panel"><div className="panel-head"><div><h2>Alle Ausgaben {year}</h2><p>Erfasste Betriebsausgaben im Jahresverlauf</p></div><span className="table-count">{yearExpenses.length} Einträge</span></div><div className="table-wrap"><table><thead><tr><th>Datum</th><th>Bezeichnung</th><th>Kategorie</th><th className="numeric">Betrag</th></tr></thead><tbody>{[...yearExpenses].sort((a,b)=>b.expense_date.localeCompare(a.expense_date)).map(e=><tr key={e.id}><td>{dateFmt(e.expense_date)}</td><td><strong>{e.description}</strong>{e.notes&&<small className="expense-note">{e.notes}</small>}</td><td>{e.category}</td><td className="numeric">{money(e.amount)}</td></tr>)}{!yearExpenses.length&&<tr><td colSpan={4}>Noch keine Ausgaben erfasst. Nutze „Ausgabe erfassen“.</td></tr>}</tbody></table></div></section>
   </div>;
 }
-function Expenses({ expenses, onAdd }: { expenses: Expense[]; onAdd: () => void }) {
-  return <section className="panel table-panel"><div className="panel-head"><div><h2>Ausgabenverwaltung</h2><p>Alle gespeicherten Betriebsausgaben</p></div><button className="btn btn-gold" onClick={onAdd}><Plus size={16}/> Ausgabe erfassen</button></div><div className="table-wrap"><table><thead><tr><th>Datum</th><th>Bezeichnung</th><th>Kategorie</th><th className="numeric">Betrag</th></tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td>{dateFmt(e.expense_date)}</td><td>{e.description}</td><td>{e.category}</td><td className="numeric">{money(e.amount)}</td></tr>)}{!expenses.length&&<tr><td colSpan={4}>Noch keine Ausgaben gespeichert.</td></tr>}</tbody></table></div></section>;
+function Expenses({ expenses, onAdd, onAddPhoto }: { expenses: Expense[]; onAdd: () => void; onAddPhoto: () => void }) {
+  return <section className="panel table-panel"><div className="panel-head"><div><h2>Ausgabenverwaltung</h2><p>Belege fotografieren, automatisch auslesen und im Archiv speichern</p></div><div className="expense-header-actions"><button className="btn btn-light" onClick={onAddPhoto}><FilePlus2 size={16}/> Beleg fotografieren</button><button className="btn btn-gold" onClick={onAdd}><Plus size={16}/> Manuell erfassen</button></div></div><div className="receipt-info-strip"><Sparkles size={17}/><span><strong>KI-Belegerkennung</strong> – Foto aufnehmen, Felder automatisch ausfüllen lassen und vor dem Speichern prüfen.</span></div><div className="table-wrap"><table><thead><tr><th>Datum</th><th>Bezeichnung</th><th>Kategorie</th><th>Beleg</th><th className="numeric">Bruttobetrag</th></tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td>{dateFmt(e.expense_date)}</td><td>{e.description}</td><td>{e.category}</td><td>{e.receipt_path ? <span className="receipt-archived"><FileCheck2 size={15}/> Archiviert</span> : "Kein Foto"}</td><td className="numeric">{money(e.amount)}</td></tr>)}{!expenses.length&&<tr><td colSpan={5}>Noch keine Ausgaben gespeichert. Fotografiere deinen ersten Beleg mit dem Handy.</td></tr>}</tbody></table></div></section>;
 }
 function SettingsPage({ configured, liveData }: { configured: boolean; liveData: boolean }) {
   return <div className="settings-grid"><div className="panel settings-panel"><h2>Unternehmensprofil</h2><p>Angaben für spätere Angebots- und Rechnungsvorlagen.</p><div className="setting-line"><span>Firmenname</span><strong>T.S. Serviceleistungen</strong></div><div className="setting-line"><span>Bereich</span><strong>Digitale Lösungen</strong></div><div className="setting-line"><span>Design</span><strong>Silber · Weiß · Gold</strong></div></div><div className="panel settings-panel"><h2>Systemstatus</h2><div className="setting-line"><span>Supabase-Variablen</span><strong className={configured?"text-green":"text-warn"}>{configured?"Konfiguriert":"Noch nicht gesetzt"}</strong></div><div className="setting-line"><span>Datenquelle</span><strong>{liveData?"Supabase":"Lokale Demo"}</strong></div><div className="setting-line"><span>PDF-Erstellung</span><strong>Geplant</strong></div><div className="setting-line"><span>Demo-Reset</span><strong>Nur lokale Vorschau</strong></div></div></div>;
