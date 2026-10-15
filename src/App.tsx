@@ -47,7 +47,6 @@ export default function App() {
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [showDocForm, setShowDocForm] = useState<"Angebot" | "Rechnung" | null>(null);
   const [docCustomer, setDocCustomer] = useState(demoCustomers[0].id);
-  const [docAmount, setDocAmount] = useState("250");
   const [docDescription, setDocDescription] = useState("Vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen folgendes Angebot.");
   const [docItems, setDocItems] = useState<DraftItem[]>([{ description: "Arbeitsleistung", quantity: "1", unit: "Stunde", unit_price: "250" }]);
   const [notice, setNotice] = useState("");
@@ -213,17 +212,7 @@ export default function App() {
       </main>
 
       {selectedDoc && <Modal title={`${selectedDoc.kind} ${selectedDoc.number}`} onClose={() => setSelectedDoc(null)}>
-        <div className="form-grid">
-          <div className="setting-line"><span>Kunde</span><strong>{selectedDoc.customer}</strong></div>
-          <div className="setting-line"><span>Datum</span><strong>{dateFmt(selectedDoc.date)}</strong></div>
-          <div className="setting-line"><span>Status</span><strong>{selectedDoc.status}</strong></div>
-          <div className="setting-line"><span>Betrag</span><strong>{money(selectedDoc.amount)}</strong></div>
-          <p className="form-note">Dies ist die gespeicherte Dokumentübersicht. Bearbeiten und PDF-Erstellung sind noch nicht verfügbar.</p>
-          <div className="modal-actions">
-            <button type="button" className="btn btn-light" onClick={() => setSelectedDoc(null)}>Schließen</button>
-            <button type="button" className="btn btn-light" disabled={documentDeleting} onClick={() => void deleteDocument(selectedDoc)}><Trash2 size={16}/> {documentDeleting ? "Wird gelöscht …" : "Dokument löschen"}</button>
-          </div>
-        </div>
+        <DocumentPreview doc={selectedDoc} companyId={companyId} onClose={() => setSelectedDoc(null)} onDelete={() => void deleteDocument(selectedDoc)} deleting={documentDeleting} />
       </Modal>}
 
       {showCustomerForm && <Modal title="Neuen Kunden anlegen" onClose={() => { if (!customerSaving) setShowCustomerForm(false); }}>
@@ -464,6 +453,73 @@ function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, of
     </div>
     <section className="panel table-panel"><div className="panel-head"><div><h2>Zuletzt bearbeitete Dokumente</h2><p>Rechnungen und Angebote im Überblick</p></div><span className="table-count">{invoices.length+offers.length} Dokumente</span></div><DocumentTable docs={[...invoices,...offers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6)} onOpen={onOpenDoc} onDelete={onDeleteDoc}/></section>
   </>;
+}
+
+type DocumentLine = { description: string; quantity: number; unit: string; unit_price: number; line_total: number; tax_rate: number };
+type BusinessProfile = { name: string; street?: string; postal_code?: string; city?: string; country?: string; email?: string; phone?: string; tax_number?: string; vat_id?: string; iban?: string; bic?: string };
+type CustomerAddress = { name: string; street?: string; postal_code?: string; city?: string; country?: string; email?: string };
+function DocumentPreview({ doc, companyId, onClose, onDelete, deleting }: { doc: Doc; companyId: string | null; onClose: () => void; onDelete: () => void; deleting: boolean }) {
+  const [lines, setLines] = useState<DocumentLine[]>([]);
+  const [business, setBusiness] = useState<BusinessProfile | null>(null);
+  const [customer, setCustomer] = useState<CustomerAddress | null>(null);
+  const [validUntil, setValidUntil] = useState("");
+  const [notes, setNotes] = useState("");
+  const [terms, setTerms] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!supabase || !companyId) { setLoading(false); return; }
+      setLoading(true); setLoadError("");
+      try {
+        const table = doc.kind === "Angebot" ? "offers" : "invoices";
+        const itemTable = doc.kind === "Angebot" ? "offer_items" : "invoice_items";
+        const fk = doc.kind === "Angebot" ? "offer_id" : "invoice_id";
+        const [companyResult, docResult, itemResult] = await Promise.all([
+          supabase.from("companies").select("name,street,postal_code,city,country,email,phone,tax_number,vat_id,iban,bic").eq("id", companyId).single(),
+          supabase.from(table).select("*").eq("id", doc.id).eq("company_id", companyId).single(),
+          supabase.from(itemTable).select("description,quantity,unit,unit_price,line_total,tax_rate,position").eq(fk, doc.id).eq("company_id", companyId).order("position")
+        ]);
+        if (companyResult.error) throw companyResult.error;
+        if (docResult.error) throw docResult.error;
+        if (itemResult.error) throw itemResult.error;
+        let customerResult: any = null;
+        if (docResult.data.customer_id) {
+          const result = await supabase.from("customers").select("name,street,postal_code,city,country,email").eq("id", docResult.data.customer_id).eq("company_id", companyId).maybeSingle();
+          customerResult = result.data;
+        }
+        if (cancelled) return;
+        setBusiness(companyResult.data as BusinessProfile);
+        setCustomer((customerResult ?? { name: doc.customer, email: "" }) as CustomerAddress);
+        setLines((itemResult.data ?? []).map((line: any) => ({ description: line.description, quantity: Number(line.quantity), unit: line.unit, unit_price: Number(line.unit_price), line_total: Number(line.line_total), tax_rate: Number(line.tax_rate) })));
+        setValidUntil(docResult.data.valid_until ?? "");
+        setNotes(docResult.data.notes ?? "");
+        setTerms(docResult.data.terms ?? docResult.data.payment_terms ?? "");
+      } catch (err) {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Dokumentdetails konnten nicht geladen werden.");
+      } finally { if (!cancelled) setLoading(false); }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [doc.id, doc.kind, companyId]);
+  const subtotal = lines.reduce((sum, line) => sum + line.line_total, 0);
+  const tax = lines.reduce((sum, line) => sum + line.line_total * line.tax_rate / 100, 0);
+  return <div className="document-preview-shell">
+    {loading && <p className="form-note">Dokumentdetails werden geladen …</p>}
+    {loadError && <p className="error-message">Details konnten nicht geladen werden: {loadError}</p>}
+    <article className="customer-document">
+      <header className="customer-document-brand"><div className="brand-mark">TS<span>•</span></div><div><strong>{business?.name || "T.S. Serviceleistungen: Digitale Lösungen"}</strong><small>{[business?.street, [business?.postal_code, business?.city].filter(Boolean).join(" "), business?.country].filter(Boolean).join(" · ")}</small><small>{[business?.email, business?.phone].filter(Boolean).join(" · ")}</small></div></header>
+      <div className="customer-document-title"><div><span className="eyebrow">{doc.kind === "Angebot" ? "ANGEBOT" : "RECHNUNG"}</span><h2>{doc.number}</h2></div><div className="document-date"><span>Datum</span><strong>{dateFmt(doc.date)}</strong>{doc.kind === "Angebot" && validUntil && <><span>Gültig bis</span><strong>{dateFmt(validUntil)}</strong></>}</div></div>
+      <div className="document-recipient"><span>ANGEBOT FÜR</span><strong>{customer?.name || doc.customer}</strong>{customer?.street && <span>{customer.street}</span>}<span>{[customer?.postal_code, customer?.city].filter(Boolean).join(" ")}</span><span>{customer?.country || "Deutschland"}</span>{customer?.email && <span>{customer.email}</span>}</div>
+      {doc.kind === "Angebot" && <p className="document-intro">{notes || "Vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen folgendes Angebot."}</p>}
+      <div className="document-items-table"><table><thead><tr><th>Pos.</th><th>Leistung / Artikel</th><th className="align-right">Menge</th><th>Einheit</th><th className="align-right">Einzelpreis</th><th className="align-right">Gesamt</th></tr></thead><tbody>{lines.map((line,index)=><tr key={index}><td>{index+1}</td><td>{line.description}</td><td className="align-right">{new Intl.NumberFormat("de-DE",{maximumFractionDigits:2}).format(line.quantity)}</td><td>{line.unit}</td><td className="align-right">{money(line.unit_price)}</td><td className="align-right">{money(line.line_total)}</td></tr>)}</tbody></table></div>
+      <div className="document-totals"><div><span>Zwischensumme</span><strong>{money(subtotal)}</strong></div>{tax > 0 && <div><span>Steuer</span><strong>{money(tax)}</strong></div>}<div className="document-total"><span>Gesamtbetrag</span><strong>{money(subtotal + tax)}</strong></div><small>Steuerangaben und Summen sind in dieser Demo nicht für die produktive Buchhaltung freigegeben.</small></div>
+      {doc.kind === "Angebot" && <div className="document-terms"><strong>Hinweise und Angebotsbedingungen</strong><p>{terms || "Bitte prüfen Sie die aufgeführten Leistungen und Mengen. Bei Rückfragen sprechen Sie uns gerne an."}</p></div>}
+      <footer className="customer-document-footer">{[business?.tax_number && `Steuernummer: ${business.tax_number}`, business?.vat_id && `USt-IdNr.: ${business.vat_id}`, business?.iban && `IBAN: ${business.iban}`, business?.bic && `BIC: ${business.bic}`].filter(Boolean).join(" · ") || "T.S. Serviceleistungen · Digitale Lösungen"}</footer>
+    </article>
+    <div className="modal-actions no-print"><button type="button" className="btn btn-light" onClick={onClose}>Schließen</button><button type="button" className="btn btn-light" disabled={deleting} onClick={onDelete}><Trash2 size={16}/>{deleting ? "Wird gelöscht …" : "Dokument löschen"}</button><button type="button" className="btn btn-gold" onClick={() => window.print()}><Download size={16}/> PDF / Drucken</button></div>
+  </div>;
 }
 
 function Metric({ title, value, change, icon, tone }: { title: string; value: string; change: string; icon: React.ReactNode; tone: string }) {
