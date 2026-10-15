@@ -199,7 +199,7 @@ export default function App() {
             <div className="heading-actions"><button className="btn btn-light" onClick={() => { setDocs(demoDocs); setCustomers(demoCustomers); setLiveData(false); setNotice("Lokale Demo-Ansicht wurde zurückgesetzt. Supabase-Daten wurden nicht verändert."); }}><RefreshCw size={16}/> Demo zurücksetzen</button><button className="btn btn-gold" onClick={() => setShowDocForm("Rechnung")}><Plus size={17}/> Neue Rechnung</button></div>
           </div>
 
-          {tab === "Dashboard" && <Dashboard invoices={invoices} offers={offers} customers={customers} totalInvoiced={totalInvoiced} outstanding={outstanding} offerVolume={offerVolume} onNewOffer={() => setShowDocForm("Angebot")} onNewInvoice={() => setShowDocForm("Rechnung")} />}
+          {tab === "Dashboard" && <Dashboard invoices={invoices} offers={offers} customers={customers} totalInvoiced={totalInvoiced} outstanding={outstanding} offerVolume={offerVolume} onNewOffer={() => setShowDocForm("Angebot")} onNewInvoice={() => setShowDocForm("Rechnung")} onOpenDoc={setSelectedDoc} onDeleteDoc={deleteDocument} />}
           {tab === "Kunden" && <Customers customers={filteredCustomers} onAdd={() => setShowCustomerForm(true)} docs={docs} onOpenDoc={setSelectedDoc} onDeleteDoc={deleteDocument} />}
           {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
@@ -397,7 +397,7 @@ function Login({ email, setEmail, password, setPassword, onSubmit, error, config
 
 function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, offerVolume, onNewOffer, onNewInvoice }: {
   invoices: Doc[]; offers: Doc[]; customers: Customer[]; totalInvoiced: number; outstanding: number; offerVolume: number;
-  onNewOffer: () => void; onNewInvoice: () => void;
+  onNewOffer: () => void; onNewInvoice: () => void; onOpenDoc: (doc: Doc) => void; onDeleteDoc: (doc: Doc) => void;
 }) {
   const months = ["Mai", "Jun", "Jul", "Aug", "Sep", "Okt"];
   const monthly = [4200, 6100, 5400, 7900, 6800, totalInvoiced || 2480];
@@ -424,7 +424,7 @@ function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, of
         <div className="panel-note"><Activity size={16}/> Status basiert auf den sichtbaren Demo-Datensätzen.</div>
       </section>
     </div>
-    <section className="panel table-panel"><div className="panel-head"><div><h2>Zuletzt bearbeitete Dokumente</h2><p>Rechnungen und Angebote im Überblick</p></div><span className="table-count">{invoices.length+offers.length} Dokumente</span></div><DocumentTable docs={[...invoices,...offers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6)} onOpen={setSelectedDoc} onDelete={deleteDocument}/></section>
+    <section className="panel table-panel"><div className="panel-head"><div><h2>Zuletzt bearbeitete Dokumente</h2><p>Rechnungen und Angebote im Überblick</p></div><span className="table-count">{invoices.length+offers.length} Dokumente</span></div><DocumentTable docs={[...invoices,...offers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6)} onOpen={onOpenDoc} onDelete={onDeleteDoc}/></section>
   </>;
 }
 
