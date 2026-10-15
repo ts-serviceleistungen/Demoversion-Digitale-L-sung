@@ -395,7 +395,7 @@ function Login({ email, setEmail, password, setPassword, onSubmit, error, config
   </div>;
 }
 
-function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, offerVolume, onNewOffer, onNewInvoice }: {
+function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, offerVolume, onNewOffer, onNewInvoice, onOpenDoc, onDeleteDoc }: {
   invoices: Doc[]; offers: Doc[]; customers: Customer[]; totalInvoiced: number; outstanding: number; offerVolume: number;
   onNewOffer: () => void; onNewInvoice: () => void; onOpenDoc: (doc: Doc) => void; onDeleteDoc: (doc: Doc) => void;
 }) {
