@@ -389,10 +389,10 @@ export default function App() {
                 .from("invoices").select("invoice_number").eq("company_id", companyId);
               if (listError) throw listError;
               const maxNumber = (existingRows ?? []).reduce((max, row) => {
-                const match = /^RE-DEMO-(\d+)$/.exec(String(row.invoice_number ?? ""));
+                const match = /^RE-(?:\d{4}|DEMO)-(\d+)$/.exec(String(row.invoice_number ?? ""));
                 return match ? Math.max(max, Number(match[1])) : max;
               }, 0);
-              documentNumber = `RE-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
+              documentNumber = `RE-${issueDate.slice(0, 4)}-${String(maxNumber + 1).padStart(3, "0")}`;
               const { data: savedInvoice, error } = await supabase.from("invoices").insert({
                 company_id: companyId,
                 customer_id: customer.id,
@@ -420,10 +420,10 @@ export default function App() {
                 .from("offers").select("offer_number").eq("company_id", companyId);
               if (listError) throw listError;
               const maxNumber = (existingRows ?? []).reduce((max, row) => {
-                const match = /^AN-DEMO-(\d+)$/.exec(String(row.offer_number ?? ""));
+                const match = /^AN-(?:\d{4}|DEMO)-(\d+)$/.exec(String(row.offer_number ?? ""));
                 return match ? Math.max(max, Number(match[1])) : max;
               }, 0);
-              documentNumber = `AN-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
+              documentNumber = `AN-${issueDate.slice(0, 4)}-${String(maxNumber + 1).padStart(3, "0")}`;
               const validUntil = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
               const { data: savedOffer, error } = await supabase.from("offers").insert({
                 company_id: companyId,
