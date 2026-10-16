@@ -79,6 +79,7 @@ export default function App() {
   const [objectPhotos, setObjectPhotos] = useState<File[]>([]);
   const [activeObjectRequestId, setActiveObjectRequestId] = useState<string | null>(null);
   const [objectRequests, setObjectRequests] = useState<any[]>([]);
+  const [objectPhotoPreview, setObjectPhotoPreview] = useState<{requestNumber:string; urls:string[]} | null>(null);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [showDocForm, setShowDocForm] = useState<"Angebot" | "Rechnung" | null>(null);
@@ -151,6 +152,14 @@ export default function App() {
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setLoginError("Anmeldung fehlgeschlagen. Bitte E-Mail und Passwort prüfen.");
+  }
+
+  async function viewObjectPhotos(req: any) {
+    if (!supabase || !req.photo_paths?.length) { setNotice("Für diesen Vorgang sind keine Fotos gespeichert."); return; }
+    const results = await Promise.all(req.photo_paths.map((path: string) => supabase!.storage.from("object-request-photos").createSignedUrl(path, 300)));
+    const urls = results.flatMap(result => result.data?.signedUrl ? [result.data.signedUrl] : []);
+    if (!urls.length) { setNotice("Fotos konnten nicht geöffnet werden. Bitte Berechtigungen prüfen."); return; }
+    setObjectPhotoPreview({ requestNumber: req.request_number, urls });
   }
 
   async function deleteDocument(doc: Doc) {
@@ -246,7 +255,7 @@ export default function App() {
           {tab === "Kunden" && <Customers customers={filteredCustomers} onAdd={() => setShowCustomerForm(true)} docs={docs} onOpenDoc={setSelectedDoc} onDeleteDoc={deleteDocument} />}
           {tab === "Objektaufnahme" && <section className="panel table-panel"><div className="panel-head"><div><h2>Mobile Objektaufnahme</h2><p>Objekte aufnehmen, Fotos sichern und daraus Angebote erstellen.</p></div><button className="btn btn-gold" onClick={() => setShowObjectForm(true)}><Plus size={16}/> Neue Aufnahme</button></div>
             <div className="filter-strip"><span><ClipboardList size={15}/> {objectRequests.length} Aufnahmen</span><span>Vorgangsnummer unabhängig von Angebotsnummer</span></div>
-            {!objectRequests.length ? <div className="empty">Noch keine Objektaufnahmen gespeichert.</div> : <div className="table-wrap"><table><thead><tr><th>Vorgang / Objekt</th><th>Kunde</th><th>Gewerk</th><th>Status</th><th>Fotos</th><th>Aktion</th></tr></thead><tbody>{objectRequests.map((req:any)=><tr key={req.id}><td><strong>{req.request_number}</strong><small className="doc-name">{req.object_type} · {[req.object_street,req.object_postal_code,req.object_city].filter(Boolean).join(" ")}</small></td><td>{req.customer_name}<small className="doc-name">{req.customer_phone || req.customer_email || ""}</small></td><td>{req.trade}</td><td>{({new:"Neu",in_progress:"In Bearbeitung",offer_created:"Angebot erstellt",completed:"Abgeschlossen",cancelled:"Storniert"} as Record<string,string>)[req.status] || req.status}</td><td>{(req.photo_paths || []).length}</td><td><button className="text-btn" onClick={()=>{setActiveObjectRequestId(req.id);setDocCustomer(req.customer_id || customers[0]?.id || "");setDocDescription("Angebot für "+req.trade+" am Objekt "+req.object_type+". "+req.work_description);setDocItems([{description:req.trade+": "+req.work_description.slice(0,140),quantity:"1",unit:"Pauschale",unit_price:"0"}]);setShowDocForm("Angebot");}}>Angebot erstellen</button><button className="text-btn" onClick={async()=>{if(supabase&&companyId){const {error}=await supabase.from("object_requests").update({status:"in_progress"}).eq("id",req.id).eq("company_id",companyId);if(error)setNotice("Status konnte nicht geändert werden.");else await loadLiveData();}}}>In Bearbeitung</button></td></tr>)}</tbody></table></div>}
+            {!objectRequests.length ? <div className="empty">Noch keine Objektaufnahmen gespeichert.</div> : <div className="table-wrap"><table><thead><tr><th>Vorgang / Objekt</th><th>Kunde</th><th>Gewerk</th><th>Status</th><th>Fotos</th><th>Aktion</th></tr></thead><tbody>{objectRequests.map((req:any)=><tr key={req.id}><td><strong>{req.request_number}</strong><small className="doc-name">{req.object_type} · {[req.object_street,req.object_postal_code,req.object_city].filter(Boolean).join(" ")}</small></td><td>{req.customer_name}<small className="doc-name">{req.customer_phone || req.customer_email || ""}</small></td><td>{req.trade}</td><td>{({new:"Neu",in_progress:"In Bearbeitung",offer_created:"Angebot erstellt",completed:"Abgeschlossen",cancelled:"Storniert"} as Record<string,string>)[req.status] || req.status}</td><td>{(req.photo_paths || []).length}</td><td>{(req.photo_paths || []).length > 0 && <button className="text-btn" onClick={()=>void viewObjectPhotos(req)}>Fotos ansehen</button>}<button className="text-btn" onClick={()=>{setActiveObjectRequestId(req.id);setDocCustomer(req.customer_id || customers[0]?.id || "");setDocDescription("Angebot für "+req.trade+" am Objekt "+req.object_type+". "+req.work_description);setDocItems([{description:req.trade+": "+req.work_description.slice(0,140),quantity:"1",unit:"Pauschale",unit_price:"0"}]);setShowDocForm("Angebot");}}>Angebot erstellen</button><button className="text-btn" onClick={async()=>{if(supabase&&companyId){const {error}=await supabase.from("object_requests").update({status:"in_progress"}).eq("id",req.id).eq("company_id",companyId);if(error)setNotice("Status konnte nicht geändert werden.");else await loadLiveData();}}}>In Bearbeitung</button></td></tr>)}</tbody></table></div>}
           </section>}
           {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
@@ -258,6 +267,7 @@ export default function App() {
         </section>
       </main>
 
+      {objectPhotoPreview && <Modal title={`Fotos · ${objectPhotoPreview.requestNumber}`} onClose={() => setObjectPhotoPreview(null)}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>{objectPhotoPreview.urls.map((url,index)=><a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Foto ${index+1} zu ${objectPhotoPreview.requestNumber}`} style={{width:"100%",height:220,objectFit:"contain",background:"#f3f4f6",borderRadius:8}} /></a>)}</div><p className="muted">Die geschützten Foto-Links sind nur kurzzeitig gültig.</p></Modal>}
       {selectedDoc && <Modal title={`${selectedDoc.kind} ${selectedDoc.number}`} className="modal-preview" onClose={() => setSelectedDoc(null)}>
         <DocumentPreview doc={selectedDoc} companyId={companyId} onClose={() => setSelectedDoc(null)} onDelete={() => void deleteDocument(selectedDoc)} deleting={documentDeleting} />
       </Modal>}
