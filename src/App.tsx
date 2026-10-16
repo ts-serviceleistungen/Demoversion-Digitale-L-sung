@@ -58,6 +58,25 @@ export default function App() {
   const [receiptReadError, setReceiptReadError] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showObjectForm, setShowObjectForm] = useState(false);
+  const [objectSaving, setObjectSaving] = useState(false);
+  const [objectCustomerType, setObjectCustomerType] = useState<"private" | "business">("private");
+  const [objectCustomerName, setObjectCustomerName] = useState("");
+  const [objectCustomerEmail, setObjectCustomerEmail] = useState("");
+  const [objectCustomerPhone, setObjectCustomerPhone] = useState("");
+  const [objectCustomerStreet, setObjectCustomerStreet] = useState("");
+  const [objectCustomerPostalCode, setObjectCustomerPostalCode] = useState("");
+  const [objectCustomerCity, setObjectCustomerCity] = useState("");
+  const [objectType, setObjectType] = useState("Wohnhaus");
+  const [objectStreet, setObjectStreet] = useState("");
+  const [objectPostalCode, setObjectPostalCode] = useState("");
+  const [objectCity, setObjectCity] = useState("");
+  const [objectTrade, setObjectTrade] = useState("Malerarbeiten");
+  const [objectDescription, setObjectDescription] = useState("");
+  const [objectDimensions, setObjectDimensions] = useState("");
+  const [objectMaterials, setObjectMaterials] = useState("");
+  const [objectEffort, setObjectEffort] = useState("");
+  const [objectPhotos, setObjectPhotos] = useState<File[]>([]);
+  const [activeObjectRequestId, setActiveObjectRequestId] = useState<string | null>(null);
   const [objectRequests, setObjectRequests] = useState<any[]>([]);
   const [objectSaving, setObjectSaving] = useState(false);
   const [activeObjectRequestId, setActiveObjectRequestId] = useState<string | null>(null);
@@ -328,6 +347,82 @@ export default function App() {
           <div className="modal-actions"><button type="button" className="btn btn-light" onClick={()=>{setShowExpenseForm(false);setReceiptPreview("");setReceiptFile(null);}} disabled={expenseSaving || receiptReading}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={expenseSaving || receiptReading}>{expenseSaving?"Speichert …":"Ausgabe speichern"}</button></div>
         </form>
       </Modal>}
+      {showObjectForm && <Modal title="Objekt vor Ort aufnehmen" className="modal-document" onClose={() => { if (!objectSaving) setShowObjectForm(false); }}>
+        <form className="form-grid" onSubmit={async e => {
+          e.preventDefault(); if (objectSaving) return;
+          if (!supabase || !companyId || !liveData) { setNotice("Bitte erneut anmelden und die Datenbankverbindung prüfen."); return; }
+          setObjectSaving(true); setNotice("");
+          try {
+            const existing = customers.find(c => c.name.trim().toLowerCase() === objectCustomerName.trim().toLowerCase());
+            let customerId = existing?.id || null;
+            if (!customerId) {
+              const {data: rows,error: numberError}=await supabase.from("customers").select("customer_number").eq("company_id",companyId);
+              if(numberError) throw numberError;
+              const max=(rows||[]).reduce((m:number,row:any)=>{const match=/^KD-(\\d+)$/.exec(row.customer_number||"");return match?Math.max(m,Number(match[1])):m;},1000);
+              const {data: savedCustomer,error: customerError}=await supabase.from("customers").insert({
+                company_id:companyId,customer_number:"KD-"+String(max+1).padStart(4,"0"),customer_type:objectCustomerType,
+                name:objectCustomerName.trim(),email:objectCustomerEmail.trim()||null,phone:objectCustomerPhone.trim()||null,
+                street:objectCustomerStreet.trim()||null,postal_code:objectCustomerPostalCode.trim()||null,city:objectCustomerCity.trim()||null,country:"Deutschland"
+              }).select("id,customer_number,name,email,city").single();
+              if(customerError) throw customerError;
+              customerId=savedCustomer.id;
+              setCustomers(old=>[...old,{id:savedCustomer.id,customer_number:savedCustomer.customer_number,name:savedCustomer.name,email:savedCustomer.email||"",city:savedCustomer.city||""}]);
+            }
+            const year=new Date().getFullYear();
+            const {data: previous,error: prevError}=await supabase.from("object_requests").select("request_number").eq("company_id",companyId).like("request_number", "OBJ-"+year+"-%");
+            if(prevError) throw prevError;
+            const maxRequest=(previous||[]).reduce((m:number,row:any)=>{const match=new RegExp("^OBJ-"+year+"-(\\\\d+)$").exec(row.request_number||"");return match?Math.max(m,Number(match[1])):m;},0);
+            const requestNumber="OBJ-"+year+"-"+String(maxRequest+1).padStart(3,"0");
+            const paths:string[]=[];
+            for(const file of objectPhotos){
+              if(!file.type.startsWith("image/")) continue;
+              const path=companyId+"/"+requestNumber+"/"+Date.now()+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+              const {error: uploadError}=await supabase.storage.from("object-request-photos").upload(path,file,{contentType:file.type,upsert:false});
+              if(uploadError) throw uploadError;
+              paths.push(path);
+            }
+            const user=(await supabase.auth.getUser()).data.user;
+            const {error: saveError}=await supabase.from("object_requests").insert({
+              company_id:companyId,request_number:requestNumber,customer_id:customerId,customer_type:objectCustomerType,
+              customer_name:objectCustomerName.trim(),customer_email:objectCustomerEmail.trim()||null,customer_phone:objectCustomerPhone.trim()||null,
+              customer_street:objectCustomerStreet.trim()||null,customer_postal_code:objectCustomerPostalCode.trim()||null,customer_city:objectCustomerCity.trim()||null,
+              object_type:objectType,object_street:objectStreet.trim()||null,object_postal_code:objectPostalCode.trim()||null,object_city:objectCity.trim()||null,
+              trade:objectTrade,work_description:objectDescription.trim(),dimensions_notes:objectDimensions.trim()||null,material_notes:objectMaterials.trim()||null,
+              effort_notes:objectEffort.trim()||null,photo_paths:paths,status:"new",created_by:user?.id||null
+            });
+            if(saveError) throw saveError;
+            setShowObjectForm(false);setObjectPhotos([]);setObjectCustomerName("");setObjectCustomerEmail("");setObjectCustomerPhone("");
+            setObjectCustomerStreet("");setObjectCustomerPostalCode("");setObjectCustomerCity("");setObjectStreet("");setObjectPostalCode("");setObjectCity("");
+            setObjectDescription("");setObjectDimensions("");setObjectMaterials("");setObjectEffort("");
+            await loadLiveData();setNotice("Objektaufnahme "+requestNumber+" gespeichert. Eine Angebotsnummer wurde noch nicht vergeben.");
+          } catch(err) {
+            console.error("Object intake save failed",err);
+            setNotice("Objektaufnahme konnte nicht gespeichert werden: "+(err instanceof Error?err.message:"Unbekannter Fehler"));
+          } finally {setObjectSaving(false);}
+        }}>
+          <h3 className="form-section-title">1. Kundendaten</h3>
+          <label>Kundentyp<select value={objectCustomerType} onChange={e=>setObjectCustomerType(e.target.value as "private"|"business")}><option value="private">Privatkunde</option><option value="business">Firma</option></select></label>
+          <label>Name / Firma<input required value={objectCustomerName} onChange={e=>setObjectCustomerName(e.target.value)} placeholder="Vorname Nachname / Firmenname"/></label>
+          <label>Telefon<input type="tel" value={objectCustomerPhone} onChange={e=>setObjectCustomerPhone(e.target.value)} placeholder="Telefonnummer"/></label>
+          <label>E-Mail<input type="email" value={objectCustomerEmail} onChange={e=>setObjectCustomerEmail(e.target.value)} placeholder="kunde@beispiel.de"/></label>
+          <label>Kundenstraße<input value={objectCustomerStreet} onChange={e=>setObjectCustomerStreet(e.target.value)} placeholder="Straße und Hausnummer"/></label>
+          <label>Kunden-PLZ<input inputMode="numeric" value={objectCustomerPostalCode} onChange={e=>setObjectCustomerPostalCode(e.target.value)} placeholder="PLZ"/></label>
+          <label>Kundenort<input value={objectCustomerCity} onChange={e=>setObjectCustomerCity(e.target.value)} placeholder="Ort"/></label>
+          <h3 className="form-section-title">2. Objekt und Arbeiten</h3>
+          <label>Objektart<select value={objectType} onChange={e=>setObjectType(e.target.value)}>{["Wohnhaus","Wohnung","Gewerbeobjekt","Grundstück / Außenanlage","Mehrfamilienhaus","Sonstiges Objekt"].map(v=><option key={v}>{v}</option>)}</select></label>
+          <label>Gewerk<select value={objectTrade} onChange={e=>setObjectTrade(e.target.value)}>{["Malerarbeiten","Gartenarbeiten","Hausmeisterservice","Reparaturarbeiten","Montagearbeiten","Renovierung / Sanierung","Reinigungsarbeiten","Fahrzeugpflege","Drohnenfotografie","Sonstiges Gewerk"].map(v=><option key={v}>{v}</option>)}</select></label>
+          <label>Objektstraße<input value={objectStreet} onChange={e=>setObjectStreet(e.target.value)} placeholder="Straße / Hausnummer"/></label>
+          <label>Objekt-PLZ<input inputMode="numeric" value={objectPostalCode} onChange={e=>setObjectPostalCode(e.target.value)} placeholder="PLZ"/></label>
+          <label>Objektort<input value={objectCity} onChange={e=>setObjectCity(e.target.value)} placeholder="Ort des Objekts"/></label>
+          <label>Beschreibung der Arbeiten<textarea required rows={4} value={objectDescription} onChange={e=>setObjectDescription(e.target.value)} placeholder="Umfang, Zustand, Besonderheiten …"/></label>
+          <label>Maße / Flächen / Mengen<textarea value={objectDimensions} onChange={e=>setObjectDimensions(e.target.value)} placeholder="z. B. Quadratmeter, laufende Meter, Stückzahl"/></label>
+          <label>Materialbedarf<textarea value={objectMaterials} onChange={e=>setObjectMaterials(e.target.value)} placeholder="Material, Farbe, Ersatzteile …"/></label>
+          <label>Geschätzter Aufwand<textarea value={objectEffort} onChange={e=>setObjectEffort(e.target.value)} placeholder="Arbeitsstunden, Zugang, Mitarbeiter …"/></label>
+          <label><Camera size={17}/> Fotos vom Handy<input type="file" accept="image/*" capture="environment" multiple onChange={e=>setObjectPhotos(Array.from(e.target.files||[]))}/><small>{objectPhotos.length?objectPhotos.length+" Foto(s) ausgewählt":"Kamera oder Galerie öffnen; maximal 10 MB je Bild."}</small></label>
+          <p className="form-note">Die Aufnahme erhält eine Vorgangsnummer. Eine Angebotsnummer wird erst beim Erstellen des Angebots vergeben.</p>
+          <div className="modal-actions"><button type="button" className="btn btn-light" disabled={objectSaving} onClick={()=>setShowObjectForm(false)}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={objectSaving}>{objectSaving?"Speichert …":"Aufnahme speichern"}</button></div>
+        </form>
+      </Modal>}
       {showCustomerForm && <Modal title="Neuen Kunden anlegen" onClose={() => { if (!customerSaving) setShowCustomerForm(false); }}>
         <form className="form-grid" onSubmit={async e => {
           e.preventDefault();
@@ -481,7 +576,12 @@ export default function App() {
                 line_total: Math.round(item.quantity * item.unit_price * 100) / 100
               })));
               if (itemError) throw itemError;
+              if (activeObjectRequestId) {
+                const { error: linkError } = await supabase.from("object_requests").update({status:"offer_created",offer_id:savedOffer.id,updated_at:new Date().toISOString()}).eq("id",activeObjectRequestId).eq("company_id",companyId);
+                if (linkError) throw linkError;
+              }
             }
+            setActiveObjectRequestId(null);
             setShowDocForm(null);
             setNotice(`${kind} ${documentNumber} wurde in Supabase gespeichert.`);
             await loadLiveData();
