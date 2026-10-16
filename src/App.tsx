@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, ArrowUpRight, Bell, ChevronDown, CircleHelp, Download, FileCheck2,
+  Activity, ArrowUpRight, Bell, ChevronDown, CircleHelp, ClipboardList, Camera, Download, FileCheck2,
   FilePlus2, FileText, Filter, LayoutDashboard, LogOut, Menu, MoreHorizontal,
   Plus, ReceiptText, RefreshCw, Search, Settings, ShieldCheck, Sparkles, Users, Trash2, Eye,
   Wallet, X
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
-type Tab = "Dashboard" | "Kunden" | "Angebote" | "Rechnungen" | "Berechnung" | "Ausgaben" | "Einstellungen";
+type Tab = "Dashboard" | "Kunden" | "Objektaufnahme" | "Angebote" | "Rechnungen" | "Berechnung" | "Ausgaben" | "Einstellungen";
 type Customer = { id: string; name: string; email?: string; city?: string; customer_number: string };
 type Doc = { id: string; number: string; customer: string; customerId?: string; date: string; amount: number; status: string; kind: "Angebot" | "Rechnung" };
 type DraftItem = { description: string; quantity: string; unit: string; unit_price: string };
@@ -57,6 +57,27 @@ export default function App() {
   const [receiptReading, setReceiptReading] = useState(false);
   const [receiptReadError, setReceiptReadError] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [showObjectForm, setShowObjectForm] = useState(false);
+  const [objectRequests, setObjectRequests] = useState<any[]>([]);
+  const [objectSaving, setObjectSaving] = useState(false);
+  const [activeObjectRequestId, setActiveObjectRequestId] = useState<string | null>(null);
+  const [objectCustomerType, setObjectCustomerType] = useState<"private" | "business">("private");
+  const [objectCustomerName, setObjectCustomerName] = useState("");
+  const [objectCustomerEmail, setObjectCustomerEmail] = useState("");
+  const [objectCustomerPhone, setObjectCustomerPhone] = useState("");
+  const [objectCustomerStreet, setObjectCustomerStreet] = useState("");
+  const [objectCustomerPostalCode, setObjectCustomerPostalCode] = useState("");
+  const [objectCustomerCity, setObjectCustomerCity] = useState("");
+  const [objectType, setObjectType] = useState("Wohnhaus");
+  const [objectStreet, setObjectStreet] = useState("");
+  const [objectPostalCode, setObjectPostalCode] = useState("");
+  const [objectCity, setObjectCity] = useState("");
+  const [objectTrade, setObjectTrade] = useState("Malerarbeiten");
+  const [objectDescription, setObjectDescription] = useState("");
+  const [objectDimensions, setObjectDimensions] = useState("");
+  const [objectMaterials, setObjectMaterials] = useState("");
+  const [objectEffort, setObjectEffort] = useState("");
+  const [objectPhotos, setObjectPhotos] = useState<File[]>([]);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [showDocForm, setShowDocForm] = useState<"Angebot" | "Rechnung" | null>(null);
@@ -99,13 +120,14 @@ export default function App() {
     }
     const currentCompanyId = companyRows[0].id;
     setCompanyId(currentCompanyId);
-    const [customerResult, invoiceResult, offerResult, expenseResult] = await Promise.all([
+    const [customerResult, invoiceResult, offerResult, expenseResult, objectRequestResult] = await Promise.all([
       supabase.from("customers").select("id,customer_number,name,email,city").eq("company_id", currentCompanyId).order("customer_number"),
       supabase.from("invoices").select("id,company_id,customer_id,invoice_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
       supabase.from("offers").select("id,company_id,customer_id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
-      supabase.from("expenses").select("id,expense_date,description,category,amount,tax_amount,notes,receipt_path").eq("company_id", currentCompanyId).order("expense_date", { ascending: false })
+      supabase.from("expenses").select("id,expense_date,description,category,amount,tax_amount,notes,receipt_path").eq("company_id", currentCompanyId).order("expense_date", { ascending: false }),
+      supabase.from("object_requests").select("*").eq("company_id", currentCompanyId).order("created_at", { ascending: false })
     ]);
-    if (customerResult.error || invoiceResult.error || offerResult.error || expenseResult.error) {
+    if (customerResult.error || invoiceResult.error || offerResult.error || expenseResult.error || objectRequestResult.error) {
       setNotice("Daten konnten nicht vollständig geladen werden. Bitte RLS und Unternehmensmitgliedschaft prüfen.");
       return;
     }
@@ -115,6 +137,7 @@ export default function App() {
     const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Angebot" }));
     setDocs([...invoiceDocs, ...offerDocs]);
     setExpenses((expenseResult.data ?? []).map((e) => ({ id:e.id, expense_date:e.expense_date, description:e.description, category:e.category ?? "Betriebsausgabe", amount:Number(e.amount), tax_amount:Number(e.tax_amount ?? 0), notes:e.notes ?? "", receipt_path:e.receipt_path ?? "" })));
+    setObjectRequests(objectRequestResult.data ?? []);
     setLiveData(true);
   }
 
@@ -181,7 +204,7 @@ export default function App() {
         <div className="workspace-label">ARBEITSBEREICH</div>
         <nav>
           {([
-            ["Dashboard", LayoutDashboard], ["Kunden", Users], ["Angebote", FileText],
+            ["Dashboard", LayoutDashboard], ["Kunden", Users], ["Objektaufnahme", ClipboardList], ["Angebote", FileText],
             ["Rechnungen", ReceiptText], ["Berechnung", Activity], ["Ausgaben", Wallet], ["Einstellungen", Settings]
           ] as const).map(([name, Icon]) => (
             <button key={name} className={`nav-item ${tab === name ? "active" : ""}`} onClick={() => { setTab(name); setMenuOpen(false); }}>
@@ -218,6 +241,10 @@ export default function App() {
 
           {tab === "Dashboard" && <Dashboard invoices={invoices} offers={offers} customers={customers} totalInvoiced={totalInvoiced} outstanding={outstanding} offerVolume={offerVolume} onNewOffer={() => setShowDocForm("Angebot")} onNewInvoice={() => setShowDocForm("Rechnung")} onOpenDoc={setSelectedDoc} onDeleteDoc={deleteDocument} />}
           {tab === "Kunden" && <Customers customers={filteredCustomers} onAdd={() => setShowCustomerForm(true)} docs={docs} onOpenDoc={setSelectedDoc} onDeleteDoc={deleteDocument} />}
+          {tab === "Objektaufnahme" && <section className="panel table-panel"><div className="panel-head"><div><h2>Mobile Objektaufnahme</h2><p>Objekte aufnehmen, Fotos sichern und daraus Angebote erstellen.</p></div><button className="btn btn-gold" onClick={() => setShowObjectForm(true)}><Plus size={16}/> Neue Aufnahme</button></div>
+            <div className="filter-strip"><span><ClipboardList size={15}/> {objectRequests.length} Aufnahmen</span><span>Vorgangsnummer unabhängig von Angebotsnummer</span></div>
+            {!objectRequests.length ? <div className="empty">Noch keine Objektaufnahmen gespeichert.</div> : <div className="table-wrap"><table><thead><tr><th>Vorgang / Objekt</th><th>Kunde</th><th>Gewerk</th><th>Status</th><th>Fotos</th><th>Aktion</th></tr></thead><tbody>{objectRequests.map((req:any)=><tr key={req.id}><td><strong>{req.request_number}</strong><small className="doc-name">{req.object_type} · {[req.object_street,req.object_postal_code,req.object_city].filter(Boolean).join(" ")}</small></td><td>{req.customer_name}<small className="doc-name">{req.customer_phone || req.customer_email || ""}</small></td><td>{req.trade}</td><td>{({new:"Neu",in_progress:"In Bearbeitung",offer_created:"Angebot erstellt",completed:"Abgeschlossen",cancelled:"Storniert"} as Record<string,string>)[req.status] || req.status}</td><td>{(req.photo_paths || []).length}</td><td><button className="text-btn" onClick={()=>{setActiveObjectRequestId(req.id);setDocCustomer(req.customer_id || customers[0]?.id || "");setDocDescription("Angebot für "+req.trade+" am Objekt "+req.object_type+". "+req.work_description);setDocItems([{description:req.trade+": "+req.work_description.slice(0,140),quantity:"1",unit:"Pauschale",unit_price:"0"}]);setShowDocForm("Angebot");}}>Angebot erstellen</button><button className="text-btn" onClick={async()=>{if(supabase&&companyId){const {error}=await supabase.from("object_requests").update({status:"in_progress"}).eq("id",req.id).eq("company_id",companyId);if(error)setNotice("Status konnte nicht geändert werden.");else await loadLiveData();}}}>In Bearbeitung</button></td></tr>)}</tbody></table></div>}
+          </section>}
           {tab === "Angebote" && <Documents docs={filteredDocs.filter(d => d.kind === "Angebot")} kind="Angebot" onNew={() => setShowDocForm("Angebot")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Rechnungen" && <Documents docs={filteredDocs.filter(d => d.kind === "Rechnung")} kind="Rechnung" onNew={() => setShowDocForm("Rechnung")} onOpen={setSelectedDoc} onDelete={deleteDocument} />}
           {tab === "Berechnung" && <Calculation docs={invoices} expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} />}
