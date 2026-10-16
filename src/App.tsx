@@ -317,115 +317,15 @@ export default function App() {
               .select("customer_number")
               .eq("company_id", companyId);
             if (numberError) throw numberError;
-            const maxNumber = (existingRows ?? []).reduce((max, row) => {
-              const match = /^KD-(\d+)$/.exec(String(row.customer_number ?? ""));
-              return match ? Math.max(max, Number(match[1])) : max;
-            }, 1000);
-            const customerNumber = `KD-${String(maxNumber + 1).padStart(4, "0")}`;
-            const { data: savedCustomer, error: insertError } = await supabase
-              .from("customers")
-              .insert({
-                company_id: companyId,
-                customer_number: customerNumber,
-                customer_type: "business",
-                name: newCustomerName.trim(),
-                email: newCustomerEmail.trim() || null,
-                city: null,
-                country: "Deutschland"
-              })
-              .select("id,customer_number,name,email,city")
-              .single();
-            if (insertError) throw insertError;
-            const customer: Customer = {
-              id: savedCustomer.id,
-              customer_number: savedCustomer.customer_number,
-              name: savedCustomer.name,
-              email: savedCustomer.email ?? "",
-              city: savedCustomer.city ?? ""
-            };
-            setCustomers(old => [...old, customer].sort((a, b) => a.customer_number.localeCompare(b.customer_number, "de")));
-            setNewCustomerName("");
-            setNewCustomerEmail("");
-            setShowCustomerForm(false);
-            setNotice(`Kunde ${customer.customer_number} wurde in Supabase gespeichert.`);
-          } catch (error) {
-            console.error("Customer save failed:", error);
-            const message = error instanceof Error ? error.message : "Unbekannter Datenbankfehler";
-            setNotice(`Kunde konnte nicht gespeichert werden: ${message}`);
-          } finally {
-            setCustomerSaving(false);
-          }
-        }}>
-          <label>Firmen- oder Kundenname<input required value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder="Musterfirma GmbH" disabled={customerSaving}/></label>
-          <label>E-Mail-Adresse<input type="email" value={newCustomerEmail} onChange={e => setNewCustomerEmail(e.target.value)} placeholder="kontakt@example.de" disabled={customerSaving}/></label>
-          <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowCustomerForm(false)} disabled={customerSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={customerSaving}>{customerSaving ? "Wird gespeichert …" : "Kunde anlegen"}</button></div>
-        </form>
-      </Modal>}
-
-      {showDocForm && <Modal title={`Neues ${showDocForm}`} className="modal-document" onClose={() => { if (!documentSaving) setShowDocForm(null); }}>
-        <form className="form-grid" onSubmit={async e => {
-          e.preventDefault();
-          if (documentSaving) return;
-          const customer = customers.find(c => c.id === docCustomer);
-          if (!supabase || !companyId || !liveData || !customer) {
-            setNotice(`Speichern nicht möglich: Bitte melde dich erneut an und prüfe die Supabase-Verbindung sowie den ausgewählten Kunden.`);
-            return;
-          }
-          const kind = showDocForm;
-          const validItems = docItems.map(item => ({ description: item.description.trim(), quantity: Number(item.quantity), unit: item.unit.trim() || "Stück", unit_price: Number(item.unit_price) }))
-            .filter(item => item.description && item.quantity > 0 && item.unit_price >= 0);
-          if (!validItems.length) { setNotice("Bitte mindestens eine vollständige Leistungsposition mit Menge und Preis eintragen."); return; }
-          const amount = validItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-          const vatRate = 19;
-          const taxAmount = Math.round(amount * vatRate) / 100;
-          const grossAmount = Math.round((amount + taxAmount) * 100) / 100;
-          const issueDate = new Date().toISOString().slice(0, 10);
-          setDocumentSaving(true);
-          setNotice("");
-          try {
-            let documentNumber = "";
-            if (kind === "Rechnung") {
-              const { data: existingRows, error: listError } = await supabase
-                .from("invoices").select("invoice_number").eq("company_id", companyId);
-              if (listError) throw listError;
+            const currentYear = new Date().getFullYear();
+              const currentYear = new Date().getFullYear();
               const maxNumber = (existingRows ?? []).reduce((max, row) => {
-                const match = /^RE-DEMO-(\d+)$/.exec(String(row.invoice_number ?? ""));
+                const value = String(row.offer_number ?? "");
+                const match = /(\\d+)$/.exec(value);
                 return match ? Math.max(max, Number(match[1])) : max;
               }, 0);
-              documentNumber = `RE-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
-              const { data: savedInvoice, error } = await supabase.from("invoices").insert({
-                company_id: companyId,
-                customer_id: customer.id,
-                invoice_number: documentNumber,
-                customer_name: customer.name,
-                issue_date: issueDate,
-                status: "draft",
-                currency: "EUR",
-                notes: docDescription.trim(),
-                subtotal: amount,
-                tax_amount: taxAmount,
-                total_amount: grossAmount,
-                created_by: (await supabase.auth.getUser()).data.user?.id ?? null
-              }).select("id").single();
-              if (error) throw error;
-              const { error: itemError } = await supabase.from("invoice_items").insert(validItems.map((item, index) => ({
-                company_id: companyId, invoice_id: savedInvoice.id, position: index + 1,
-                description: item.description, quantity: item.quantity, unit: item.unit,
-                unit_price: item.unit_price, discount_percent: 0, tax_rate: vatRate,
-                line_total: Math.round(item.quantity * item.unit_price * 100) / 100
-              })));
-              if (itemError) throw itemError;
-            } else {
-              const { data: existingRows, error: listError } = await supabase
-                .from("offers").select("offer_number").eq("company_id", companyId);
-              if (listError) throw listError;
-              const maxNumber = (existingRows ?? []).reduce((max, row) => {
-                const match = /^AN-DEMO-(\d+)$/.exec(String(row.offer_number ?? ""));
-                return match ? Math.max(max, Number(match[1])) : max;
-              }, 0);
-              documentNumber = `AN-DEMO-${String(maxNumber + 1).padStart(3, "0")}`;
-              const validUntil = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
-              const { data: savedOffer, error } = await supabase.from("offers").insert({
+              documentNumber = "AN-" + currentYear + "-" + String(maxNumber + 1).padStart(3, "0");
+                            const { data: savedOffer, error } = await supabase.from("offers").insert({
                 company_id: companyId,
                 customer_id: customer.id,
                 offer_number: documentNumber,
