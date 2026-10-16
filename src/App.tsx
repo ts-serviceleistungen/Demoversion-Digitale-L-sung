@@ -358,7 +358,7 @@ export default function App() {
             if (!customerId) {
               const {data: rows,error: numberError}=await supabase.from("customers").select("customer_number").eq("company_id",companyId);
               if(numberError) throw numberError;
-              const max=(rows||[]).reduce((m:number,row:any)=>{const match=/^KD-(\\d+)$/.exec(row.customer_number||"");return match?Math.max(m,Number(match[1])):m;},1000);
+              const max=(rows||[]).reduce((m:number,row:any)=>{const match=/^KD-(\d+)$/.exec(row.customer_number||"");return match?Math.max(m,Number(match[1])):m;},1000);
               const {data: savedCustomer,error: customerError}=await supabase.from("customers").insert({
                 company_id:companyId,customer_number:"KD-"+String(max+1).padStart(4,"0"),customer_type:objectCustomerType,
                 name:objectCustomerName.trim(),email:objectCustomerEmail.trim()||null,phone:objectCustomerPhone.trim()||null,
@@ -371,7 +371,7 @@ export default function App() {
             const year=new Date().getFullYear();
             const {data: previous,error: prevError}=await supabase.from("object_requests").select("request_number").eq("company_id",companyId).like("request_number", "OBJ-"+year+"-%");
             if(prevError) throw prevError;
-            const maxRequest=(previous||[]).reduce((m:number,row:any)=>{const match=new RegExp("^OBJ-"+year+"-(\\\\d+)$").exec(row.request_number||"");return match?Math.max(m,Number(match[1])):m;},0);
+            const maxRequest=(previous||[]).reduce((m:number,row:any)=>{const match=new RegExp("^OBJ-"+year+"-(\\d+)$").exec(row.request_number||"");return match?Math.max(m,Number(match[1])):m;},0);
             const requestNumber="OBJ-"+year+"-"+String(maxRequest+1).padStart(3,"0");
             const paths:string[]=[];
             for(const file of objectPhotos){
