@@ -6,6 +6,7 @@ import {
   Wallet, X
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import PublicRequestForm from "./PublicRequestForm";
 
 type Tab = "Dashboard" | "Kunden" | "Objektaufnahme" | "Angebote" | "Rechnungen" | "Berechnung" | "Ausgaben" | "Einstellungen";
 type Customer = { id: string; name: string; email?: string; city?: string; customer_number: string };
@@ -190,6 +191,8 @@ export default function App() {
   const totalInvoiced = invoices.reduce((sum, d) => sum + d.amount, 0);
   const outstanding = invoices.filter(d => d.status !== "Bezahlt").reduce((sum, d) => sum + d.amount, 0);
   const offerVolume = offers.filter(d => d.status === "Offen").reduce((sum, d) => sum + d.amount, 0);
+
+  if (new URLSearchParams(window.location.search).get("anfrage") === "1") return <PublicRequestForm />;
 
   if (!loggedIn) return <Login email={email} setEmail={setEmail} password={password} setPassword={setPassword} onSubmit={signIn} error={loginError} configured={isSupabaseConfigured} />;
 
