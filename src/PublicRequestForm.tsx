@@ -100,7 +100,7 @@ export default function PublicRequestForm() {
       <div aria-hidden="true" style={{position:"absolute",left:"-10000px",width:1,height:1,overflow:"hidden"}}><label htmlFor="website">Website</label><input id="website" tabIndex={-1} autoComplete="off" value={honeypot} onChange={e=>setHoneypot(e.target.value)}/></div>
       <label style={{...styles.field,...styles.full,display:"flex",flexDirection:"row",alignItems:"flex-start",fontWeight:400,lineHeight:1.5}}><input type="checkbox" required checked={consent} onChange={e=>setConsent(e.target.checked)} style={{marginTop:4}}/><span>Ich bin damit einverstanden, dass meine Angaben und die hochgeladenen Fotos zur Bearbeitung dieser Anfrage verarbeitet werden. *</span></label>
       {message && <div role="alert" style={{...styles.full,padding:12,borderRadius:8,background:"#fff2e7",color:"#8b3c14",lineHeight:1.5}}>{message}</div>}
-      <button type="submit" disabled={busy} style={{...styles.button,opacity:busy?.65:1}}>{busy?"Anfrage wird übermittelt …":"Anfrage verbindlich übermitteln"}</button>
+      <button type="submit" disabled={busy} style={{...styles.button,opacity:busy ? 0.65 : 1}}>{busy?"Anfrage wird übermittelt …":"Anfrage verbindlich übermitteln"}</button>
       <p style={{...styles.hint,...styles.full,margin:0}}>Mit dem Absenden entsteht noch kein Auftrag und keine Zahlungsverpflichtung. Bitte übermitteln Sie keine sensiblen Dokumente oder Zahlungsdaten.</p>
     </form>
   </section></main>;
