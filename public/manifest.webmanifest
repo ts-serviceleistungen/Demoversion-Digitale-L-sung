@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "T.S. Serviceleistungen: Digitale Lösungen",
+  "short_name": "T.S. Lösungen",
+  "description": "Digitale Verwaltung von Kunden, Angeboten, Rechnungen und Ausgaben.",
+  "lang": "de-DE",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f5f7",
+  "theme_color": "#d4af37",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
