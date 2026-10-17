@@ -482,3 +482,5 @@ input, select, textarea { max-width: 100%; }
 .expense-header-actions{display:flex;gap:8px;flex-wrap:wrap}
 .receipt-archived{display:inline-flex;align-items:center;gap:5px;color:#367553;font-size:12px;font-weight:600}
 @media(max-width:680px){.expense-header-actions{display:grid;grid-template-columns:1fr;width:100%}.expense-header-actions .btn{justify-content:center}.receipt-pick{width:100%}.receipt-capture{padding:12px}}
+
+.customer-form-section{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;padding:14px;border:1px solid var(--line,#e5e7eb);border-radius:14px;background:#fff}.customer-form-section h3{grid-column:1/-1;margin:0 0 2px;font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:#7a6a3a}.customer-form-section>label,.customer-address-row>label{display:flex;flex-direction:column;gap:7px;min-width:0}.customer-address-row{display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);gap:12px}@media(max-width:600px){.customer-form-section{grid-template-columns:minmax(0,1fr);padding:12px;gap:12px}.customer-form-section h3{grid-column:1}.customer-address-row{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)}}
