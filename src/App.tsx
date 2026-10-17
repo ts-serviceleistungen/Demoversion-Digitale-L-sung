@@ -660,8 +660,23 @@ function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, of
   invoices: Doc[]; offers: Doc[]; customers: Customer[]; totalInvoiced: number; outstanding: number; offerVolume: number;
   onNewOffer: () => void; onNewInvoice: () => void; onOpenDoc: (doc: Doc) => void; onDeleteDoc: (doc: Doc) => void;
 }) {
-  const months = ["Mai", "Jun", "Jul", "Aug", "Sep", "Okt"];
-  const monthly = [4200, 6100, 5400, 7900, 6800, totalInvoiced || 2480];
+  const [chartRange, setChartRange] = useState<"6" | "12" | "all">("6");
+  const availableMonths = useMemo(() => {
+    const keys = new Set(invoices.map(invoice => invoice.date.slice(0, 7)).filter(Boolean));
+    const now = new Date();
+    for (let i = 0; i < (chartRange === "6" ? 6 : chartRange === "12" ? 12 : 0); i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keys.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+    }
+    let list = [...keys].sort();
+    if (chartRange !== "all") list = list.slice(-Number(chartRange));
+    return list.map(key => {
+      const [year, month] = key.split("-").map(Number);
+      const value = invoices.filter(invoice => invoice.date.startsWith(key)).reduce((sum, invoice) => sum + invoice.amount, 0);
+      return { key, label: new Date(year, month - 1, 1).toLocaleDateString("de-DE", { month: "short", year: "2-digit" }), value };
+    });
+  }, [invoices, chartRange]);
+  const monthly = availableMonths.map(m => m.value);
   const max = Math.max(...monthly, 1);
   return <>
     <div className="quick-actions">
@@ -676,9 +691,10 @@ function Dashboard({ invoices, offers, customers, totalInvoiced, outstanding, of
       <Metric title="Kunden" value={String(customers.length)} change="Im aktuellen Datenbestand" icon={<Users size={18}/>} tone="gold"/>
     </div>
     <div className="content-grid">
-      <section className="panel revenue-panel"><div className="panel-head"><div><h2>Umsatzentwicklung</h2><p>Illustrative Monatswerte für die Designvorschau</p></div><button className="select-pill">Letzte 6 Monate <ChevronDown size={14}/></button></div>
-        <div className="chart-legend"><span><i className="legend-gold"/> Umsatz</span><span><i className="legend-silver"/> Vergleich</span></div>
-        <div className="bar-chart">{months.map((m,i) => <div className="bar-group" key={m}><div className="bars"><div className="bar previous" style={{height: `${Math.max(7, [3000,4300,4900,6200,5800,6100][i]/max*150)}px`}}/><div className="bar current" style={{height: `${Math.max(7, monthly[i]/max*150)}px`}}/></div><small>{m}</small></div>)}</div>
+      <section className="panel revenue-panel"><div className="panel-head"><div><h2>Umsatzentwicklung</h2><p>Auswertung anhand gespeicherter Rechnungen</p></div><label className="select-pill chart-range-select"><span className="sr-only">Zeitraum wählen</span><select aria-label="Zeitraum der Umsatzentwicklung" value={chartRange} onChange={e=>setChartRange(e.target.value as "6" | "12" | "all")}><option value="6">Letzte 6 Monate</option><option value="12">Letzte 12 Monate</option><option value="all">Gesamter Zeitraum</option></select><ChevronDown size={14}/></label></div>
+        <div className="chart-legend"><span><i className="legend-gold"/> Rechnungsumsatz</span></div>
+        <div className="bar-chart">{availableMonths.map((m,i) => <div className="bar-group" key={m.key} title={money(m.value)}><div className="bars"><div className="bar current" style={{height: `${Math.max(7, m.value/max*150)}px`}}/></div><small>{m.label}</small></div>)}</div>
+        {!invoices.length && <p className="form-note">Noch keine gespeicherten Rechnungen für die Umsatzentwicklung vorhanden.</p>}
       </section>
       <section className="panel"><div className="panel-head"><div><h2>Dokumentenstatus</h2><p>Aktueller Demo-Bestand</p></div><MoreHorizontal size={20}/></div>
         <div className="status-list"><StatusRow label="Rechnungen bezahlt" value={invoices.filter(i=>i.status==="Bezahlt").length} total={Math.max(1,invoices.length)} tone="gold"/><StatusRow label="Rechnungen offen" value={invoices.filter(i=>i.status!=="Bezahlt").length} total={Math.max(1,invoices.length)} tone="silver"/><StatusRow label="Angebote offen" value={offers.filter(i=>i.status==="Offen").length} total={Math.max(1,offers.length)} tone="gray"/></div>
