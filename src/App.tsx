@@ -9,7 +9,7 @@ import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import PublicRequestForm from "./PublicRequestForm";
 
 type Tab = "Dashboard" | "Kunden" | "Objektaufnahme" | "Angebote" | "Rechnungen" | "Berechnung" | "Ausgaben" | "Einstellungen";
-type Customer = { id: string; name: string; email?: string; city?: string; customer_number: string };
+type Customer = { id: string; name: string; email?: string; city?: string; customer_number: string; contact_person?: string; phone?: string; street?: string; postal_code?: string; customer_type?: "private" | "business" };
 type Doc = { id: string; number: string; customer: string; customerId?: string; date: string; amount: number; status: string; kind: "Angebot" | "Rechnung" };
 type DraftItem = { description: string; quantity: string; unit: string; unit_price: string };
 type Expense = { id: string; expense_date: string; description: string; category: string; amount: number; tax_amount: number; notes?: string; receipt_path?: string };
@@ -82,6 +82,12 @@ export default function App() {
   const [objectPhotoPreview, setObjectPhotoPreview] = useState<{requestNumber:string; urls:string[]} | null>(null);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
+  const [newCustomerType, setNewCustomerType] = useState<"private" | "business">("business");
+  const [newCustomerContact, setNewCustomerContact] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newCustomerStreet, setNewCustomerStreet] = useState("");
+  const [newCustomerPostalCode, setNewCustomerPostalCode] = useState("");
+  const [newCustomerCity, setNewCustomerCity] = useState("");
   const [showDocForm, setShowDocForm] = useState<"Angebot" | "Rechnung" | null>(null);
   const [docCustomer, setDocCustomer] = useState(demoCustomers[0].id);
   const [docDescription, setDocDescription] = useState("Vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen folgendes Angebot.");
@@ -123,7 +129,7 @@ export default function App() {
     const currentCompanyId = companyRows[0].id;
     setCompanyId(currentCompanyId);
     const [customerResult, invoiceResult, offerResult, expenseResult, objectRequestResult] = await Promise.all([
-      supabase.from("customers").select("id,customer_number,name,email,city").eq("company_id", currentCompanyId).order("customer_number"),
+      supabase.from("customers").select("id,customer_number,customer_type,name,contact_person,email,phone,street,postal_code,city").eq("company_id", currentCompanyId).order("customer_number"),
       supabase.from("invoices").select("id,company_id,customer_id,invoice_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
       supabase.from("offers").select("id,company_id,customer_id,offer_number,customer_name,issue_date,total_amount,status").eq("company_id", currentCompanyId).order("issue_date", { ascending: false }),
       supabase.from("expenses").select("id,expense_date,description,category,amount,tax_amount,notes,receipt_path").eq("company_id", currentCompanyId).order("expense_date", { ascending: false }),
@@ -133,7 +139,7 @@ export default function App() {
       setNotice("Daten konnten nicht vollständig geladen werden. Bitte RLS und Unternehmensmitgliedschaft prüfen.");
       return;
     }
-    setCustomers((customerResult.data ?? []).map((c) => ({ id: c.id, customer_number: c.customer_number, name: c.name, email: c.email ?? "", city: c.city ?? "" })));
+    setCustomers((customerResult.data ?? []).map((c) => ({ id: c.id, customer_number: c.customer_number, customer_type: c.customer_type, contact_person: c.contact_person ?? "", name: c.name, email: c.email ?? "", phone: c.phone ?? "", street: c.street ?? "", postal_code: c.postal_code ?? "", city: c.city ?? "" })));
     if (customerResult.data?.length && !customerResult.data.some((c) => c.id === docCustomer)) setDocCustomer(customerResult.data[0].id);
     const invoiceDocs: Doc[] = (invoiceResult.data ?? []).map((d) => ({ id: d.id, number: d.invoice_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Rechnung" }));
     const offerDocs: Doc[] = (offerResult.data ?? []).map((d) => ({ id: d.id, number: d.offer_number, customer: d.customer_name, customerId: d.customer_id, date: d.issue_date, amount: Number(d.total_amount), status: statusLabel(d.status), kind: "Angebot" }));
@@ -443,25 +449,35 @@ export default function App() {
               .insert({
                 company_id: companyId,
                 customer_number: customerNumber,
-                customer_type: "business",
+                customer_type: newCustomerType,
                 name: newCustomerName.trim(),
-                email: newCustomerEmail.trim() || null,
-                city: null,
+                contact_person: newCustomerType === "business" ? newCustomerContact.trim() : null,
+                email: newCustomerEmail.trim(),
+                phone: newCustomerPhone.trim(),
+                street: newCustomerStreet.trim(),
+                postal_code: newCustomerPostalCode.trim(),
+                city: newCustomerCity.trim(),
                 country: "Deutschland"
               })
-              .select("id,customer_number,name,email,city")
+              .select("id,customer_number,customer_type,name,contact_person,email,phone,street,postal_code,city")
               .single();
             if (insertError) throw insertError;
             const customer: Customer = {
               id: savedCustomer.id,
               customer_number: savedCustomer.customer_number,
               name: savedCustomer.name,
+              customer_type: savedCustomer.customer_type,
+              contact_person: savedCustomer.contact_person ?? "",
               email: savedCustomer.email ?? "",
+              phone: savedCustomer.phone ?? "",
+              street: savedCustomer.street ?? "",
+              postal_code: savedCustomer.postal_code ?? "",
               city: savedCustomer.city ?? ""
             };
             setCustomers(old => [...old, customer].sort((a, b) => a.customer_number.localeCompare(b.customer_number, "de")));
             setNewCustomerName("");
             setNewCustomerEmail("");
+            setNewCustomerType("business"); setNewCustomerContact(""); setNewCustomerPhone(""); setNewCustomerStreet(""); setNewCustomerPostalCode(""); setNewCustomerCity("");
             setShowCustomerForm(false);
             setNotice(`Kunde ${customer.customer_number} wurde in Supabase gespeichert.`);
           } catch (error) {
@@ -472,8 +488,13 @@ export default function App() {
             setCustomerSaving(false);
           }
         }}>
-          <label>Firmen- oder Kundenname<input required value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder="Musterfirma GmbH" disabled={customerSaving}/></label>
-          <label>E-Mail-Adresse<input type="email" value={newCustomerEmail} onChange={e => setNewCustomerEmail(e.target.value)} placeholder="kontakt@example.de" disabled={customerSaving}/></label>
+          <div className="customer-form-section"><h3>Stammdaten</h3><label>Kundentyp<select required value={newCustomerType} onChange={e => setNewCustomerType(e.target.value as "private" | "business")} disabled={customerSaving}><option value="business">Geschäftskunde / Firma</option><option value="private">Privatkunde</option></select></label>
+          <label>{newCustomerType === "business" ? "Firmenname" : "Vor- und Nachname"}<input required value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder={newCustomerType === "business" ? "Musterfirma GmbH" : "Max Mustermann"} disabled={customerSaving}/></label>
+          {newCustomerType === "business" && <label>Ansprechpartner<input required value={newCustomerContact} onChange={e => setNewCustomerContact(e.target.value)} placeholder="Vor- und Nachname" disabled={customerSaving}/></label>}</div>
+          <div className="customer-form-section"><h3>Kontaktdaten</h3><label>E-Mail-Adresse<input type="email" required value={newCustomerEmail} onChange={e => setNewCustomerEmail(e.target.value)} placeholder="kontakt@beispiel.de" disabled={customerSaving}/></label>
+          <label>Telefonnummer<input type="tel" required value={newCustomerPhone} onChange={e => setNewCustomerPhone(e.target.value)} placeholder="+49 …" disabled={customerSaving}/></label></div>
+          <div className="customer-form-section"><h3>Anschrift</h3><label>Straße und Hausnummer<input required value={newCustomerStreet} onChange={e => setNewCustomerStreet(e.target.value)} placeholder="Musterstraße 12" disabled={customerSaving}/></label>
+          <div className="customer-address-row"><label>Postleitzahl<input required autoComplete="postal-code" value={newCustomerPostalCode} onChange={e => setNewCustomerPostalCode(e.target.value)} placeholder="93413" disabled={customerSaving}/></label><label>Ort<input required autoComplete="address-level2" value={newCustomerCity} onChange={e => setNewCustomerCity(e.target.value)} placeholder="Cham" disabled={customerSaving}/></label></div></div>
           <div className="modal-actions"><button type="button" className="btn btn-light" onClick={() => setShowCustomerForm(false)} disabled={customerSaving}>Abbrechen</button><button className="btn btn-gold" type="submit" disabled={customerSaving}>{customerSaving ? "Wird gespeichert …" : "Kunde anlegen"}</button></div>
         </form>
       </Modal>}
